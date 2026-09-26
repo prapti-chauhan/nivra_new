@@ -1,0 +1,7 @@
+tags:
+  # Touches the live Supabase project. Opt in with:
+  #   flutter test test/integration \
+  #     --dart-define-from-file=supabase.local.json \
+  #     --dart-define=RUN_SUPABASE_IT=true
+  integration:
+    skip: false

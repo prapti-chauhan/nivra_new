@@ -1,0 +1,9 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          # Dart fields are camelCase; every SQL column is snake_case so the
+          # local schema and the Supabase schema are spelled identically.
+          case_from_dart_to_sql: snake_case
+          named_parameters: true
