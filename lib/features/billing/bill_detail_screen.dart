@@ -46,6 +46,14 @@ class BillDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(invoiceLabel(prefix: bill.numberPrefix, number: bill.number)),
         actions: [
+          // First, and with a filled tint: sharing the bill is the point of
+          // having made it. Editing and deleting are the rare cases.
+          IconButton.filledTonal(
+            icon: const Icon(Icons.share_outlined),
+            tooltip: 'Share bill',
+            onPressed: () => context.push('/bills/$billId/share'),
+          ),
+          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             onPressed: () => context.push('/bills/$billId/edit'),

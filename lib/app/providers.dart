@@ -1,7 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
+import 'dart:typed_data';
+
 import '../data/db/database.dart';
+import '../data/pdf/invoice_fonts.dart';
+import '../data/pdf/invoice_fonts_flutter.dart';
+import '../data/pdf/invoice_from_rows.dart';
+import '../data/pdf/invoice_pdf.dart';
+import '../domain/invoice.dart';
 import '../data/remote/supabase_config.dart';
 import '../data/remote/sync_api.dart';
 import '../data/sync/connectivity_monitor.dart';
@@ -175,4 +182,49 @@ final businessProfileProvider = StreamProvider<BusinessProfile?>((ref) {
   final userId = ref.watch(currentUserProvider).value?.id;
   if (userId == null) return Stream.value(null);
   return ref.watch(billingDaoProvider).watchProfile(userId);
+});
+
+
+// ---------------------------------------------------------------------------
+// The bill PDF.
+// ---------------------------------------------------------------------------
+
+/// Parsed once per run. Font parsing is not free and the bytes never change.
+final invoiceFontsProvider = FutureProvider<InvoiceFonts>(
+  (ref) => loadInvoiceFontsFromAssets(),
+);
+
+/// What the customer's copy will say, assembled from the stored rows.
+///
+/// Null while the bill is still loading, so callers can tell "not ready" from
+/// "no such bill".
+final invoiceDocumentProvider =
+    Provider.family<InvoiceDocument?, String>((ref, billId) {
+  final bill = ref.watch(billProvider(billId)).value;
+  if (bill == null) return null;
+
+  final lines = ref.watch(billLinesProvider(billId)).value ?? const <BillLine>[];
+  final profile = ref.watch(businessProfileProvider).value;
+  final customerId = bill.customerId;
+  final customer =
+      customerId == null ? null : ref.watch(customerProvider(customerId)).value;
+
+  return invoiceFromRows(
+    bill: bill,
+    lines: lines,
+    customer: customer,
+    profile: profile,
+  );
+});
+
+/// Rendered fresh every time rather than cached to disk.
+///
+/// A bill can be revised, and a stored PDF would quietly show superseded
+/// numbers — exactly wrong for the dispute this document is meant to settle.
+final invoicePdfProvider =
+    FutureProvider.family<Uint8List?, String>((ref, billId) async {
+  final doc = ref.watch(invoiceDocumentProvider(billId));
+  if (doc == null) return null;
+  final fonts = await ref.watch(invoiceFontsProvider.future);
+  return renderInvoicePdf(doc, fonts);
 });

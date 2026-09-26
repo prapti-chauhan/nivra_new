@@ -42,6 +42,10 @@ dependencies:
   uuid: ^4.6.0
   connectivity_plus: ^7.3.1
   intl: ^0.20.3
+  pdf: ^3.13.1
+  printing: ^5.15.1
+  share_plus: ^13.3.0
+  path_provider: ^2.1.6
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -64,6 +68,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Subset Noto Sans, bundled rather than downloaded so the bill PDF can be
+  # produced with no network. The standard PDF fonts have no rupee glyph.
+  assets:
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSans-Bold.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

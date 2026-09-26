@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/login_screen.dart';
 import '../features/billing/bill_detail_screen.dart';
 import '../features/billing/bill_editor_screen.dart';
+import '../features/billing/invoice_preview_screen.dart';
 import '../features/billing/bills_screen.dart';
 import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
@@ -71,6 +72,15 @@ final routerProvider = Provider<GoRouter>((ref) {
                         path: 'edit',
                         parentNavigatorKey: _rootKey,
                         builder: (context, state) => BillEditorScreen(
+                          billId: state.pathParameters['id']!,
+                        ),
+                      ),
+                      // Full screen above the shell: the preview is the
+                      // customer's copy and deserves the whole display.
+                      GoRoute(
+                        path: 'share',
+                        parentNavigatorKey: _rootKey,
+                        builder: (context, state) => InvoicePreviewScreen(
                           billId: state.pathParameters['id']!,
                         ),
                       ),

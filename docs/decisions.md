@@ -242,3 +242,92 @@ correctly on a device that never saw the original.
 - Invoice numbering format.
 - What happens to the free Supabase project's one-week inactivity pause before
   a real shop depends on it.
+
+---
+
+# Slice three — the bill PDF
+
+## Settled before building
+
+| # | Decision | Chosen | Rejected |
+|---|----------|--------|----------|
+| 9 | How the PDF is made | The `pdf` package, rendered in Dart on the device | HTML through a webview; rendering server-side |
+| 10 | Look | Classic invoice structure, set with care | Minimal receipt; thermal-printer format |
+| 11 | Page size | A5 | A4 |
+| 12 | Sharing | `share_plus` to the OS share sheet | A `wa.me` deep link |
+| 13 | Storage | Rendered fresh on every share | Cached to disk after the first render |
+
+**No network is involved at any point.** This was asked directly and is worth
+recording: the renderer is plain Dart and the fonts are bundled assets. The
+`printing` package ships a `PdfGoogleFonts` helper that downloads faces at
+runtime, and using it would have made the bill unprintable in exactly the shop
+this app is for.
+
+**The fonts are a subset, built from the Noto Sans variable font.** The 14
+standard PDF fonts contain no rupee glyph (U+20B9) at all, so an embedded face
+is not a nicety — without one the bill cannot show the one symbol it most
+needs. The variable original is 2 MB; static instances at weight 400 and 700,
+subset to Latin, punctuation and the rupee sign, are 12.6 KB each.
+
+**A5, not A4.** Nearly every one of these is read on a phone in WhatsApp,
+where an A4 page holding three lines is mostly empty. A5 fills a phone screen
+and still prints. `kInvoicePageFormat` is one constant if that turns out to be
+wrong.
+
+**Rendered fresh every time.** A bill can be revised, and a cached PDF would
+quietly show superseded numbers — precisely wrong for the dispute this
+document exists to settle.
+
+**The sharing flow is three taps, not one.** WhatsApp's URL scheme cannot
+attach a file, so "send this bill to this customer" has to go through the OS
+share sheet: share, pick WhatsApp, pick the contact. This is a real dent in
+the fifteen-second story and it is a platform limit, not a design choice.
+
+## Decided while building
+
+- **The bill's stored totals are printed, never recomputed.** The customer's
+  copy must match what the shop's screen said, including for an old bill saved
+  under arithmetic that has since changed.
+- **The name snapshotted on the bill beats the customer's current name**, so a
+  later rename cannot change what an old bill says.
+- **A walk-in reads "Cash sale"**, never a blank — it is the most prominent
+  line on the page.
+- **A revised bill says so on the customer's copy**, not only on Ramesh's
+  screen. A trace only he can see does not settle an argument.
+- **The total is printed in words.** Its absence is one of the things that
+  makes a bill look homemade.
+- **A signature block** ("For <shop>", rule, "Authorised signature"), which is
+  standard on an Indian invoice and gives the lower half of a short bill
+  something to be.
+- **The renderer has no Flutter dependency.** Asset loading lives in
+  `invoice_fonts_flutter.dart`, so the PDF layer runs on the plain Dart VM —
+  which is what lets `tool/emit_sample_invoice.dart` exist and what keeps the
+  renderer testable without a widget harness.
+
+## Verified, not asserted
+
+- `flutter analyze`: clean. `flutter test`: **111 passing** (83 before this
+  slice), including 28 new.
+- A rendered bill was **read back with pypdf**: the rupee sign is present in
+  the extracted text, the page box is A5 (419x595pt), and a 40-line bill
+  paginates to 3 pages with the totals and the amount in words on the last.
+- `flutter build apk --debug` succeeds with the three new plugins, and the
+  subset fonts are present in the built APK under
+  `assets/flutter_assets/assets/fonts/`.
+
+**One bug was found only by looking at the output.** The `#` column was 18pt
+wide, which could not fit "10" at 9pt once padding was removed. Every row from
+ten onwards wrapped to two lines, pushing a 40-line bill from three pages to
+four. Nothing threw and no test failed. There is now a page-count assertion
+that would catch it.
+
+## Still open after this slice
+
+- The bundled font covers Latin only. A customer name typed in Devanagari
+  will render as empty boxes on the bill. The fix is a Devanagari subset as a
+  `fontFallback`; it was not done here because the app is English-only by
+  decision and the extra weight deserves its own call.
+- A shop logo: `business_profile.logo_path` exists and nothing sets it, so the
+  invoice header is text only.
+- Sharing has not yet been exercised on a physical device.
+
