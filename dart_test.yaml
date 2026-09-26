@@ -5,3 +5,8 @@ tags:
   #     --dart-define=RUN_SUPABASE_IT=true
   integration:
     skip: false
+
+  # Rebuilds a v2 database on disk and upgrades it, so a broken onUpgrade
+  # fails here rather than on the shop owner's phone. Runs by default.
+  migration:
+    skip: false

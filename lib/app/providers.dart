@@ -186,6 +186,89 @@ final businessProfileProvider = StreamProvider<BusinessProfile?>((ref) {
 
 
 // ---------------------------------------------------------------------------
+// Suppliers and purchases.
+// ---------------------------------------------------------------------------
+
+final purchaseDaoProvider = Provider<PurchaseDao>(
+  (ref) => PurchaseDao(ref.watch(databaseProvider)),
+);
+
+final supplierSearchProvider =
+    NotifierProvider<SupplierSearch, String>(SupplierSearch.new);
+
+class SupplierSearch extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void update(String value) => state = value;
+}
+
+final suppliersProvider = StreamProvider<List<Supplier>>((ref) {
+  final search = ref.watch(supplierSearchProvider);
+  return ref.watch(purchaseDaoProvider).watchSuppliers(search: search);
+});
+
+final supplierProvider = StreamProvider.family<Supplier?, String>(
+  (ref, id) => ref.watch(purchaseDaoProvider).watchSupplier(id),
+);
+
+final supplierLedgerProvider = StreamProvider.family<List<LedgerEntry>, String>(
+  (ref, id) => ref.watch(purchaseDaoProvider).watchSupplierLedger(id),
+);
+
+/// What the shop owes in total, positive.
+final totalPayableProvider = StreamProvider<int>(
+  (ref) => ref.watch(purchaseDaoProvider).watchTotalPayable(),
+);
+
+/// Search inside the purchase editor, kept apart from the bill editor's so a
+/// half-finished purchase and a half-finished bill never disturb each other.
+final purchaseItemSearchProvider =
+    NotifierProvider<PurchaseItemSearch, String>(PurchaseItemSearch.new);
+
+class PurchaseItemSearch extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void update(String value) => state = value;
+}
+
+final purchaseItemResultsProvider = StreamProvider<List<Item>>((ref) {
+  final search = ref.watch(purchaseItemSearchProvider);
+  if (search.trim().isEmpty) return Stream.value(const <Item>[]);
+  return ref.watch(inventoryDaoProvider).watchItems(search: search);
+});
+
+final purchasesSearchProvider =
+    NotifierProvider<PurchasesSearch, String>(PurchasesSearch.new);
+
+class PurchasesSearch extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void update(String value) => state = value;
+}
+
+final purchasesProvider = StreamProvider<List<Purchase>>((ref) {
+  final search = ref.watch(purchasesSearchProvider);
+  return ref.watch(purchaseDaoProvider).watchPurchases(search: search);
+});
+
+final purchasesForSupplierProvider =
+    StreamProvider.family<List<Purchase>, String>(
+  (ref, id) => ref.watch(purchaseDaoProvider).watchPurchasesFor(id),
+);
+
+final purchaseProvider = StreamProvider.family<Purchase?, String>(
+  (ref, id) => ref.watch(purchaseDaoProvider).watchPurchase(id),
+);
+
+final purchaseLinesProvider =
+    StreamProvider.family<List<PurchaseLine>, String>(
+  (ref, id) => ref.watch(purchaseDaoProvider).watchPurchaseLines(id),
+);
+
+// ---------------------------------------------------------------------------
 // The bill PDF.
 // ---------------------------------------------------------------------------
 

@@ -22,10 +22,13 @@ part 'database.g.dart';
     BillLines,
     BillRevisions,
     Payments,
+    Suppliers,
+    Purchases,
+    PurchaseLines,
     SyncStates,
     SyncLogs,
   ],
-  daos: [InventoryDao, PartyDao, BillingDao, SyncDao],
+  daos: [InventoryDao, PartyDao, BillingDao, PurchaseDao, SyncDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase({this._clock = const Clock()})
@@ -39,7 +42,7 @@ class AppDatabase extends _$AppDatabase {
   Clock get clock => _clock;
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -79,6 +82,32 @@ class AppDatabase extends _$AppDatabase {
               await m.createIndex(index);
             }
           }
+          if (from < 3) {
+            // Slice three. Same reason as above for naming tables and indexes
+            // explicitly rather than calling createAll().
+            for (final table in <TableInfo<Table, dynamic>>[
+              suppliers,
+              purchases,
+              purchaseLines,
+            ]) {
+              await m.createTable(table);
+            }
+            // Payments learned to point at the other side of the counter.
+            await m.addColumn(payments, payments.supplierId);
+            await m.addColumn(payments, payments.purchaseId);
+            for (final index in [
+              idxSuppliersDirty,
+              idxSuppliersName,
+              idxPurchasesSupplier,
+              idxPurchasesOccurred,
+              idxPurchasesDirty,
+              idxPurchaseLinesPurchase,
+              idxPurchaseLinesItem,
+              idxPurchaseLinesDirty,
+            ]) {
+              await m.createIndex(index);
+            }
+          }
         },
         beforeOpen: (details) async {
           // References are declared across the schema; without this SQLite
@@ -93,7 +122,14 @@ class AppDatabase extends _$AppDatabase {
     final stock = await InventoryDao(this).rebuildStockCache();
     final balances = await PartyDao(this).rebuildBalanceCache();
     final paid = await BillingDao(this).rebuildAmountPaidCache();
-    return CacheRepairReport(stock: stock, balances: balances, billsPaid: paid);
+    final purchaseDao = PurchaseDao(this);
+    final supplierBalances = await purchaseDao.rebuildSupplierBalanceCache();
+    final purchasesPaid = await purchaseDao.rebuildPurchasePaidCache();
+    return CacheRepairReport(
+      stock: stock,
+      balances: balances + supplierBalances,
+      billsPaid: paid + purchasesPaid,
+    );
   }
 }
 
@@ -359,6 +395,9 @@ class SyncTables {
   static const String billRevisions = 'bill_revisions';
   static const String ledgerEntries = 'ledger_entries';
   static const String payments = 'payments';
+  static const String suppliers = 'suppliers';
+  static const String purchases = 'purchases';
+  static const String purchaseLines = 'purchase_lines';
 
   /// Push order matters: a row must never reach Supabase before the row it
   /// points at. bill_lines reference bills and items; payments reference both
@@ -367,8 +406,11 @@ class SyncTables {
     businessProfiles,
     items,
     customers,
+    suppliers,
     bills,
     billLines,
+    purchases,
+    purchaseLines,
     stockMovements,
     ledgerEntries,
     payments,
@@ -410,6 +452,9 @@ class CacheRepairReport {
     BillLines,
     BillRevisions,
     Payments,
+    Suppliers,
+    Purchases,
+    PurchaseLines,
     SyncStates,
     SyncLogs,
   ],
@@ -485,7 +530,10 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
       (SELECT COUNT(*) FROM bill_lines WHERE is_dirty = 1) +
       (SELECT COUNT(*) FROM bill_revisions WHERE is_dirty = 1) +
       (SELECT COUNT(*) FROM ledger_entries WHERE is_dirty = 1) +
-      (SELECT COUNT(*) FROM payments WHERE is_dirty = 1) AS pending
+      (SELECT COUNT(*) FROM payments WHERE is_dirty = 1) +
+      (SELECT COUNT(*) FROM suppliers WHERE is_dirty = 1) +
+      (SELECT COUNT(*) FROM purchases WHERE is_dirty = 1) +
+      (SELECT COUNT(*) FROM purchase_lines WHERE is_dirty = 1) AS pending
   ''';
 
   Future<int> pendingCount() async {
@@ -538,6 +586,9 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
         billRevisions,
         ledgerEntries,
         payments,
+        suppliers,
+        purchases,
+        purchaseLines,
       };
 
   Set<TableInfo> _tablesFor(String table) => switch (table) {
@@ -550,6 +601,9 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
         SyncTables.billRevisions => {billRevisions},
         SyncTables.ledgerEntries => {ledgerEntries},
         SyncTables.payments => {payments},
+        SyncTables.suppliers => {suppliers},
+        SyncTables.purchases => {purchases},
+        SyncTables.purchaseLines => {purchaseLines},
         _ => const {},
       };
 
@@ -567,6 +621,18 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
     if (row == null) return false;
     return row.read<int>('is_dirty') == 1;
   }
+
+  Future<List<Supplier>> dirtySuppliers({int limit = 200}) =>
+      (select(suppliers)..where((t) => t.isDirty.equals(true))..limit(limit))
+          .get();
+
+  Future<List<Purchase>> dirtyPurchases({int limit = 200}) =>
+      (select(purchases)..where((t) => t.isDirty.equals(true))..limit(limit))
+          .get();
+
+  Future<List<PurchaseLine>> dirtyPurchaseLines({int limit = 500}) =>
+      (select(purchaseLines)..where((t) => t.isDirty.equals(true))..limit(limit))
+          .get();
 
   Future<void> upsertPulledItem(ItemsCompanion row) =>
       into(items).insertOnConflictUpdate(row);
@@ -596,6 +662,15 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
       into(payments).insertOnConflictUpdate(row);
 
   // --- cursors -------------------------------------------------------------
+
+  Future<void> upsertPulledSupplier(SuppliersCompanion row) =>
+      into(suppliers).insertOnConflictUpdate(row);
+
+  Future<void> upsertPulledPurchase(PurchasesCompanion row) =>
+      into(purchases).insertOnConflictUpdate(row);
+
+  Future<void> upsertPulledPurchaseLine(PurchaseLinesCompanion row) =>
+      into(purchaseLines).insertOnConflictUpdate(row);
 
   Future<int> cursorFor(String table) async {
     final row = await (select(syncStates)
@@ -1652,6 +1727,626 @@ class BillingDao extends DatabaseAccessor<AppDatabase> with _$BillingDaoMixin {
         updatedAt: Value(now),
         isDirty: const Value(true),
       ),
+    );
+  }
+}
+
+/// One line of a purchase as the editor builds it, before it is stored.
+class PurchaseLineDraft {
+  const PurchaseLineDraft({
+    required this.itemId,
+    required this.name,
+    required this.unit,
+    required this.qty,
+    required this.unitCost,
+  });
+
+  final String? itemId;
+  final String name;
+  final String unit;
+
+  /// Thousandths.
+  final int qty;
+
+  /// Paise. On a purchase the price paid is the cost.
+  final int unitCost;
+
+  int get total => lineTotal(qtyThousandths: qty, unitPricePaise: unitCost);
+}
+
+/// Suppliers, purchases, and money going out.
+///
+/// The mirror image of [BillingDao]: a purchase pushes stock up and pushes
+/// what Ramesh owes up, where a bill does the opposite. Every figure keeps the
+/// one global sign rule — positive means owed to Ramesh, or money came in — so
+/// a supplier he owes sits at a negative balance and the UI flips it once, at
+/// the edge, through `payableFromBalance`.
+@DriftAccessor(
+  tables: [Suppliers, Purchases, PurchaseLines, Payments, LedgerEntries, Items],
+)
+class PurchaseDao extends DatabaseAccessor<AppDatabase>
+    with _$PurchaseDaoMixin {
+  PurchaseDao(super.db);
+
+  Clock get _clock => attachedDatabase.clock;
+  InventoryDao get _inventory => InventoryDao(attachedDatabase);
+  PartyDao get _parties => PartyDao(attachedDatabase);
+
+  // --- suppliers -----------------------------------------------------------
+
+  Stream<List<Supplier>> watchSuppliers({String search = ''}) {
+    final query = select(suppliers)..where((t) => t.deletedAt.isNull());
+    final term = search.trim();
+    if (term.isNotEmpty) {
+      final pattern = '%${term.toLowerCase()}%';
+      query.where((t) => t.name.lower().like(pattern) | t.phone.lower().like(pattern));
+    }
+    query.orderBy([(t) => OrderingTerm(expression: t.name.lower())]);
+    return query.watch();
+  }
+
+  Future<Supplier?> findSupplier(String id) =>
+      (select(suppliers)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Stream<Supplier?> watchSupplier(String id) =>
+      (select(suppliers)..where((t) => t.id.equals(id))).watchSingleOrNull();
+
+  Stream<List<LedgerEntry>> watchSupplierLedger(String supplierId) {
+    final query = select(ledgerEntries)
+      ..where((t) =>
+          t.accountType.equals(LedgerAccount.supplier.wire) &
+          t.accountId.equals(supplierId))
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.occurredAt, mode: OrderingMode.desc),
+        (t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc),
+      ]);
+    return query.watch();
+  }
+
+  /// The authoritative payable for one supplier, straight from the ledger.
+  Future<int> balanceFromLedger(String supplierId) async {
+    final row = await customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM ledger_entries '
+      'WHERE account_type = ? AND account_id = ?',
+      variables: [
+        Variable<String>(LedgerAccount.supplier.wire),
+        Variable<String>(supplierId),
+      ],
+      readsFrom: {ledgerEntries},
+    ).getSingle();
+    return row.read<int>('total');
+  }
+
+  /// What the shop owes in total, positive.
+  Stream<int> watchTotalPayable() {
+    return customSelect(
+      'SELECT COALESCE(SUM(-balance), 0) AS total FROM suppliers '
+      'WHERE deleted_at IS NULL AND balance < 0',
+      readsFrom: {suppliers},
+    ).watchSingle().map((row) => row.read<int>('total'));
+  }
+
+  Future<String> createSupplier({
+    required String userId,
+    required String name,
+    String? phone,
+    String? address,
+    String? note,
+    /// Paise, positive, what Ramesh already owed before he started using this.
+    int openingPayable = 0,
+  }) async {
+    final id = newId();
+    final now = _clock.nowMillis();
+
+    await transaction(() async {
+      await into(suppliers).insert(
+        SuppliersCompanion.insert(
+          id: id,
+          userId: userId,
+          createdAt: now,
+          updatedAt: now,
+          name: name,
+          phone: Value(phone),
+          address: Value(address),
+          note: Value(note),
+        ),
+      );
+
+      if (openingPayable != 0) {
+        // An opening figure is a ledger row like any other, never a column,
+        // so correcting it later leaves a trace instead of silently moving.
+        await _addSupplierEntry(
+          userId: userId,
+          supplierId: id,
+          amount: -openingPayable,
+          reason: LedgerReason.opening,
+          sourceType: 'supplier',
+          sourceId: id,
+          occurredAt: now,
+        );
+      }
+    });
+
+    return id;
+  }
+
+  Future<void> updateSupplier({
+    required String id,
+    required String name,
+    String? phone,
+    String? address,
+    String? note,
+  }) async {
+    await (update(suppliers)..where((t) => t.id.equals(id))).write(
+      SuppliersCompanion(
+        name: Value(name),
+        phone: Value(phone),
+        address: Value(address),
+        note: Value(note),
+        updatedAt: Value(_clock.nowMillis()),
+        isDirty: const Value(true),
+      ),
+    );
+  }
+
+  Future<void> setSupplierDeleted(String id, {required bool deleted}) async {
+    final now = _clock.nowMillis();
+    await (update(suppliers)..where((t) => t.id.equals(id))).write(
+      SuppliersCompanion(
+        deletedAt: deleted ? Value(now) : const Value(null),
+        updatedAt: Value(now),
+        isDirty: const Value(true),
+      ),
+    );
+  }
+
+  /// Writes a supplier ledger row and moves the cached balance with it, in the
+  /// same transaction. `balance` is local-only and derived, so this must not
+  /// touch `updated_at` or `is_dirty`.
+  Future<String> _addSupplierEntry({
+    required String userId,
+    required String supplierId,
+    required int amount,
+    required LedgerReason reason,
+    String? sourceType,
+    String? sourceId,
+    int? occurredAt,
+    String? note,
+  }) async {
+    final id = await _parties.addLedgerEntry(
+      userId: userId,
+      account: LedgerAccount.supplier,
+      accountId: supplierId,
+      amount: amount,
+      reason: reason,
+      sourceType: sourceType,
+      sourceId: sourceId,
+      occurredAt: occurredAt,
+      note: note,
+    );
+    await customUpdate(
+      'UPDATE suppliers SET balance = balance + ? WHERE id = ?',
+      variables: [Variable<int>(amount), Variable<String>(supplierId)],
+      updates: {suppliers},
+      updateKind: UpdateKind.update,
+    );
+    return id;
+  }
+
+  // --- purchases -----------------------------------------------------------
+
+  Stream<List<Purchase>> watchPurchases({String search = ''}) {
+    final query = select(purchases)..where((t) => t.deletedAt.isNull());
+    final term = search.trim();
+    if (term.isNotEmpty) {
+      final pattern = '%${term.toLowerCase()}%';
+      query.where((t) =>
+          t.supplierName.lower().like(pattern) |
+          t.supplierBillNo.lower().like(pattern));
+    }
+    query.orderBy([
+      (t) => OrderingTerm(expression: t.occurredAt, mode: OrderingMode.desc),
+      (t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc),
+    ]);
+    return query.watch();
+  }
+
+  Stream<List<Purchase>> watchPurchasesFor(String supplierId) {
+    final query = select(purchases)
+      ..where((t) => t.deletedAt.isNull() & t.supplierId.equals(supplierId))
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.occurredAt, mode: OrderingMode.desc),
+      ]);
+    return query.watch();
+  }
+
+  Future<Purchase?> findPurchase(String id) =>
+      (select(purchases)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Stream<Purchase?> watchPurchase(String id) =>
+      (select(purchases)..where((t) => t.id.equals(id))).watchSingleOrNull();
+
+  Stream<List<PurchaseLine>> watchPurchaseLines(String purchaseId) {
+    final query = select(purchaseLines)
+      ..where((t) => t.purchaseId.equals(purchaseId) & t.deletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm(expression: t.position)]);
+    return query.watch();
+  }
+
+  Future<List<PurchaseLine>> purchaseLinesFor(String purchaseId) =>
+      (select(purchaseLines)
+            ..where((t) => t.purchaseId.equals(purchaseId) & t.deletedAt.isNull())
+            ..orderBy([(t) => OrderingTerm(expression: t.position)]))
+          .get();
+
+  Stream<List<Payment>> watchPurchasePayments(String purchaseId) {
+    final query = select(payments)
+      ..where((t) => t.purchaseId.equals(purchaseId) & t.deletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm(expression: t.occurredAt)]);
+    return query.watch();
+  }
+
+  /// Records a purchase: stock up, and more owed to the supplier.
+  Future<String> savePurchase({
+    required String userId,
+    required String supplierId,
+    required List<PurchaseLineDraft> lines,
+    String? supplierName,
+    String? supplierBillNo,
+    Discount discount = const Discount.none(),
+    /// Paise, positive, paid at the time of purchase. Zero means on credit.
+    int amountPaid = 0,
+    String paymentMethod = 'cash',
+    int? occurredAt,
+    String? note,
+    /// Update each item's stored purchase_price to what was paid this time.
+    bool updateItemCost = true,
+  }) async {
+    if (lines.isEmpty) {
+      throw ArgumentError('A purchase needs at least one line');
+    }
+
+    final id = newId();
+    final now = _clock.nowMillis();
+    final when = occurredAt ?? now;
+
+    await transaction(() async {
+      final totals = totalsFor(
+        lineTotals: lines.map((l) => l.total),
+        discount: discount,
+      );
+
+      await into(purchases).insert(
+        PurchasesCompanion.insert(
+          id: id,
+          userId: userId,
+          createdAt: now,
+          updatedAt: now,
+          supplierId: supplierId,
+          supplierName: Value(supplierName),
+          supplierBillNo: Value(supplierBillNo),
+          subtotal: Value(totals.subtotal),
+          discountType: Value(discount.type.wire),
+          discountValue: Value(discount.value),
+          discountAmount: Value(totals.discount),
+          total: Value(totals.total),
+          occurredAt: when,
+          note: Value(note),
+        ),
+      );
+
+      var position = 0;
+      for (final line in lines) {
+        await into(purchaseLines).insert(
+          PurchaseLinesCompanion.insert(
+            id: newId(),
+            userId: userId,
+            createdAt: now,
+            updatedAt: now,
+            purchaseId: id,
+            itemId: Value(line.itemId),
+            name: line.name,
+            unit: Value(line.unit),
+            qty: line.qty,
+            unitCost: line.unitCost,
+            lineTotal: line.total,
+            position: Value(position++),
+          ),
+        );
+      }
+
+      await _applyPurchaseEffects(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplierId,
+        lines: lines,
+        total: totals.total,
+        occurredAt: when,
+        updateItemCost: updateItemCost,
+      );
+
+      if (amountPaid > 0) {
+        await recordSupplierPayment(
+          userId: userId,
+          supplierId: supplierId,
+          purchaseId: id,
+          amount: amountPaid,
+          method: paymentMethod,
+          occurredAt: when,
+        );
+      }
+    });
+
+    return id;
+  }
+
+  /// Stock in, money owed. Split out so restoring a purchase can replay it.
+  Future<void> _applyPurchaseEffects({
+    required String userId,
+    required String purchaseId,
+    required String supplierId,
+    required Iterable<PurchaseLineDraft> lines,
+    required int total,
+    required int occurredAt,
+    required bool updateItemCost,
+  }) async {
+    for (final line in lines) {
+      final itemId = line.itemId;
+      if (itemId == null) continue;
+      await _inventory.applyMovement(
+        userId: userId,
+        itemId: itemId,
+        qtyDelta: line.qty,
+        reason: MovementReason.purchase,
+        unitCost: line.unitCost,
+        source: MovementSource.purchase,
+        sourceId: purchaseId,
+        occurredAt: occurredAt,
+      );
+      if (updateItemCost) {
+        // What he last paid is the most useful default next time. This is an
+        // ordinary edit of a synced column, so it does mark the row dirty.
+        await (update(items)..where((t) => t.id.equals(itemId))).write(
+          ItemsCompanion(
+            purchasePrice: Value(line.unitCost),
+            updatedAt: Value(_clock.nowMillis()),
+            isDirty: const Value(true),
+          ),
+        );
+      }
+    }
+
+    await _parties.addLedgerEntry(
+      userId: userId,
+      account: LedgerAccount.purchase,
+      amount: total,
+      reason: LedgerReason.purchase,
+      sourceType: 'purchase',
+      sourceId: purchaseId,
+      occurredAt: occurredAt,
+    );
+
+    // Negative: he owes the supplier more than he did.
+    await _addSupplierEntry(
+      userId: userId,
+      supplierId: supplierId,
+      amount: -total,
+      reason: LedgerReason.purchase,
+      sourceType: 'purchase',
+      sourceId: purchaseId,
+      occurredAt: occurredAt,
+    );
+  }
+
+  /// Money out. [amount] is positive; the stored payment is negative, because
+  /// the sign on `payments.amount` says which way the money went.
+  Future<String> recordSupplierPayment({
+    required String userId,
+    required String supplierId,
+    String? purchaseId,
+    required int amount,
+    String method = 'cash',
+    int? occurredAt,
+    String? note,
+  }) async {
+    if (amount <= 0) {
+      throw ArgumentError('A payment out must be a positive amount');
+    }
+
+    final id = newId();
+    final now = _clock.nowMillis();
+    final when = occurredAt ?? now;
+
+    await transaction(() async {
+      await into(payments).insert(
+        PaymentsCompanion.insert(
+          id: id,
+          userId: userId,
+          createdAt: now,
+          updatedAt: now,
+          supplierId: Value(supplierId),
+          purchaseId: Value(purchaseId),
+          amount: -amount,
+          method: Value(method),
+          occurredAt: when,
+          note: Value(note),
+        ),
+      );
+
+      await _parties.addLedgerEntry(
+        userId: userId,
+        account: method == 'cash' ? LedgerAccount.cash : LedgerAccount.bank,
+        amount: -amount,
+        reason: LedgerReason.paymentOut,
+        sourceType: 'payment',
+        sourceId: id,
+        occurredAt: when,
+      );
+
+      await _addSupplierEntry(
+        userId: userId,
+        supplierId: supplierId,
+        amount: amount,
+        reason: LedgerReason.paymentOut,
+        sourceType: 'payment',
+        sourceId: id,
+        occurredAt: when,
+      );
+
+      if (purchaseId != null) {
+        await customUpdate(
+          'UPDATE purchases SET amount_paid = amount_paid + ? WHERE id = ?',
+          variables: [Variable<int>(amount), Variable<String>(purchaseId)],
+          updates: {purchases},
+          updateKind: UpdateKind.update,
+        );
+      }
+    });
+
+    return id;
+  }
+
+  /// Undoes a purchase by writing opposing rows. Nothing is edited or deleted.
+  Future<void> deletePurchase({
+    required String userId,
+    required String purchaseId,
+  }) async {
+    final now = _clock.nowMillis();
+
+    await transaction(() async {
+      final purchase = await findPurchase(purchaseId);
+      if (purchase == null || purchase.deletedAt != null) return;
+
+      final lines = await purchaseLinesFor(purchaseId);
+
+      for (final line in lines) {
+        final itemId = line.itemId;
+        if (itemId == null) continue;
+        await _inventory.applyMovement(
+          userId: userId,
+          itemId: itemId,
+          qtyDelta: -line.qty,
+          reason: MovementReason.reversal,
+          unitCost: line.unitCost,
+          source: MovementSource.purchase,
+          sourceId: purchaseId,
+          occurredAt: now,
+        );
+      }
+
+      await _parties.addLedgerEntry(
+        userId: userId,
+        account: LedgerAccount.purchase,
+        amount: -purchase.total,
+        reason: LedgerReason.purchaseReversal,
+        sourceType: 'purchase',
+        sourceId: purchaseId,
+        occurredAt: now,
+      );
+
+      await _addSupplierEntry(
+        userId: userId,
+        supplierId: purchase.supplierId,
+        amount: purchase.total,
+        reason: LedgerReason.purchaseReversal,
+        sourceType: 'purchase',
+        sourceId: purchaseId,
+        occurredAt: now,
+      );
+
+      // Payments made against it are reversed too: the purchase never
+      // happened, so neither did the money that settled it.
+      final paid = await (select(payments)
+            ..where((t) => t.purchaseId.equals(purchaseId) & t.deletedAt.isNull()))
+          .get();
+      for (final payment in paid) {
+        final magnitude = -payment.amount;
+        await _parties.addLedgerEntry(
+          userId: userId,
+          account: payment.method == 'cash'
+              ? LedgerAccount.cash
+              : LedgerAccount.bank,
+          amount: magnitude,
+          reason: LedgerReason.paymentOutReversal,
+          sourceType: 'payment',
+          sourceId: payment.id,
+          occurredAt: now,
+        );
+        await _addSupplierEntry(
+          userId: userId,
+          supplierId: purchase.supplierId,
+          amount: -magnitude,
+          reason: LedgerReason.paymentOutReversal,
+          sourceType: 'payment',
+          sourceId: payment.id,
+          occurredAt: now,
+        );
+        await (update(payments)..where((t) => t.id.equals(payment.id))).write(
+          PaymentsCompanion(
+            deletedAt: Value(now),
+            updatedAt: Value(now),
+            isDirty: const Value(true),
+          ),
+        );
+      }
+
+      await (update(purchaseLines)
+            ..where((t) => t.purchaseId.equals(purchaseId)))
+          .write(
+        PurchaseLinesCompanion(
+          deletedAt: Value(now),
+          updatedAt: Value(now),
+          isDirty: const Value(true),
+        ),
+      );
+      await (update(purchases)..where((t) => t.id.equals(purchaseId))).write(
+        PurchasesCompanion(
+          deletedAt: Value(now),
+          amountPaid: const Value(0),
+          updatedAt: Value(now),
+          isDirty: const Value(true),
+        ),
+      );
+    });
+  }
+
+  // --- cache repair --------------------------------------------------------
+
+  /// Recomputes every supplier balance from the ledger. Returns how many were
+  /// wrong.
+  Future<int> rebuildSupplierBalanceCache() {
+    return customUpdate(
+      '''
+      UPDATE suppliers SET balance = (
+        SELECT COALESCE(SUM(amount), 0) FROM ledger_entries
+        WHERE account_type = 'supplier' AND account_id = suppliers.id
+      )
+      WHERE balance != (
+        SELECT COALESCE(SUM(amount), 0) FROM ledger_entries
+        WHERE account_type = 'supplier' AND account_id = suppliers.id
+      )
+      ''',
+      updates: {suppliers},
+      updateKind: UpdateKind.update,
+    );
+  }
+
+  /// Recomputes what has been paid against each purchase. Stored positive,
+  /// summed from payments that are stored negative.
+  Future<int> rebuildPurchasePaidCache() {
+    return customUpdate(
+      '''
+      UPDATE purchases SET amount_paid = (
+        SELECT COALESCE(SUM(-amount), 0) FROM payments
+        WHERE purchase_id = purchases.id AND deleted_at IS NULL
+      )
+      WHERE deleted_at IS NULL AND amount_paid != (
+        SELECT COALESCE(SUM(-amount), 0) FROM payments
+        WHERE purchase_id = purchases.id AND deleted_at IS NULL
+      )
+      ''',
+      updates: {purchases},
+      updateKind: UpdateKind.update,
     );
   }
 }

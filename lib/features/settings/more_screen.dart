@@ -31,6 +31,22 @@ class MoreScreen extends ConsumerWidget {
           ),
           const Divider(height: 1),
           ListTile(
+            leading: const Icon(Icons.local_shipping_outlined),
+            title: const Text('Suppliers'),
+            subtitle: const Text('Who you buy from, and what you owe them'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/suppliers'),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.inventory_2_outlined),
+            title: const Text('Purchases'),
+            subtitle: const Text('Stock coming in'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/purchases'),
+          ),
+          const Divider(height: 1),
+          ListTile(
             leading: const Icon(Icons.cloud_outlined),
             title: const Text('Your data'),
             subtitle: const Text('Backup and sync'),

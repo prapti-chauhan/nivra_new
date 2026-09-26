@@ -331,3 +331,99 @@ that would catch it.
   invoice header is text only.
 - Sharing has not yet been exercised on a physical device.
 
+---
+
+# Slice four — suppliers and purchases
+
+## Settled before building
+
+| # | Decision | Chosen | Rejected |
+|---|----------|--------|----------|
+| 14 | Suppliers | A separate table, confirming the slice-two call | One `parties` table with is_customer / is_supplier flags |
+| 15 | Scope | Suppliers, purchases and paying suppliers, together | Purchases alone, with payment later |
+| 16 | Editing a purchase | Delete and re-enter | Reverse-and-reissue with revisions, as bills have |
+| 17 | Where it lives | Under More, full screen | A fifth tab in the bottom bar |
+
+**Suppliers stayed a separate table.** Earlier in this conversation I argued for
+one `parties` table, on the grounds that the same person is often both. Having
+built it, the existing decision is the better one: separate rows are what stop
+"he owes me 4,000" and "I owe him 9,000" from ever being netted into a single
+misleading figure. `linked_customer_id` makes merging a data migration later
+rather than a redesign.
+
+**Paying suppliers is in scope**, because a payable that can only go up is not
+a feature. Recording what arrived without being able to settle it would have
+left the slice half-built.
+
+**A purchase is corrected by deleting and re-entering**, not by the
+reverse-and-reissue machinery bills have. Bills need a trace because a customer
+may dispute one; a purchase is an internal record, and deleting it already
+reverses the stock and the payable in full. Revisions can be added later
+without a migration.
+
+**Purchases live under More, not in the bottom bar.** Billing is the whole app;
+adding a fifth tab would dilute the four that matter at the counter.
+
+## Decided while building
+
+- **One sign rule, no exceptions.** Positive means owed to Ramesh, or money
+  came in. A supplier he owes therefore sits at a NEGATIVE balance, and the UI
+  flips it once at the edge through `payableFromBalance`. The stored cache is
+  not flipped, because `cache == SUM(ledger)` is the single invariant the
+  rebuild checks and an exception to it is how caches rot.
+- **A payment out is an ordinary payment row with a negative amount.** The cash
+  account stays a plain sum that never has to know which kind of party was
+  involved. `purchases.amount_paid` flips the sign once when rebuilding.
+- **An opening payable is a ledger row, never a column** — same as opening
+  stock and opening customer balances.
+- **What he paid this time becomes the item's cost next time.** `savePurchase`
+  updates `items.purchase_price`, and the movement carries the actual cost, so
+  the costing method (still open) can be chosen later from real data.
+- **Deleting a purchase reverses the payments made against it too.** The
+  purchase did not happen, so neither did the money that settled it.
+- **The purchase editor is deliberately not built like the bill editor.**
+  Billing happens with a customer waiting and is optimised for speed; a
+  purchase is entered later off the supplier's printed invoice and is optimised
+  for getting the figures right, so quantity and cost are always visible and
+  never assumed.
+
+## Verified, not asserted
+
+- `flutter analyze` clean. `flutter test`: **135 passing** (111 before), of
+  which 21 are new purchase-DAO tests and 3 are migration tests.
+- The DAO tests check the full round trip: a purchase raises stock and the
+  payable, a payment lowers the payable and takes cash out, and deleting the
+  purchase returns stock, payable and cash to exactly zero.
+- Cache repair is tested by corrupting `suppliers.balance` and
+  `purchases.amount_paid` directly and asserting the rebuild finds exactly one
+  fault, fixes it, and finds nothing on a second run.
+- `flutter build apk --debug` succeeds.
+
+**Migration testing now exists, and did not before.** `schemaVersion` went from
+2 to 3, and a fresh install exercises `createAll` and never touches
+`onUpgrade` — so a broken migration would only ever have appeared on the shop
+owner's phone, with his data. `drift_schemas/` now holds snapshots of v2 (taken
+from the previous commit via a git worktree) and v3, and
+`test/data/migration_test.dart` rebuilds a v2 database on disk, writes rows
+through the old schema, reopens it under the current one and asserts the data
+survived.
+
+Two things went wrong while writing that test and are worth remembering:
+
+- `createMigrator().createAll()` does not stamp `user_version`. The file then
+  looks brand-new on reopen and drift runs `onCreate` instead of `onUpgrade` —
+  so the test was silently not testing a migration at all. Letting drift open
+  the v2 database normally is what stamps the version.
+- `drift/drift.dart` and `matcher` both export `isNull` and `isNotNull`. Test
+  files that use both need `hide`.
+
+## Still open after this slice
+
+- Editing a purchase in place.
+- The remote half is unverified. `supabase/schema_v3.sql` is written but has
+  not been applied to the live project, so none of the sync claims for these
+  three tables have been checked against Postgres the way slices one and two
+  were. **This is the gap to close before the slice counts as done.**
+- Expenses, other income, and cash versus bank balances.
+- Reports, which is where the costing method finally has to be chosen.
+

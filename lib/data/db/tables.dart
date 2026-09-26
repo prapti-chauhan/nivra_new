@@ -271,7 +271,13 @@ class Payments extends Table with SyncedRow {
   TextColumn get customerId => text().nullable().references(Customers, #id)();
   TextColumn get billId => text().nullable().references(Bills, #id)();
 
-  /// Paise. Positive is money coming in.
+  /// Set instead of [customerId] when money went the other way.
+  TextColumn get supplierId => text().nullable().references(Suppliers, #id)();
+  TextColumn get purchaseId => text().nullable().references(Purchases, #id)();
+
+  /// Paise. Positive is money coming in, negative is money going out, so the
+  /// cash account is a plain sum over this column and never needs to know
+  /// which kind of party was involved.
   IntColumn get amount => integer()();
 
   /// 'cash' | 'bank' | 'upi'
@@ -280,3 +286,96 @@ class Payments extends Table with SyncedRow {
   IntColumn get occurredAt => integer()();
   TextColumn get note => text().nullable()();
 }
+
+// ---------------------------------------------------------------------------
+// Slice three: suppliers, purchases.
+// ---------------------------------------------------------------------------
+
+/// Deliberately a separate table from [Customers] rather than one `parties`
+/// table with flags.
+///
+/// The same person is often both — a trader Ramesh buys from who also buys
+/// from him — and keeping the rows apart is what stops "he owes me 4,000" and
+/// "I owe him 9,000" from ever being netted into a single misleading -5,000.
+/// The column shape is identical and [linkedCustomerId] joins the two, so
+/// merging later is a data migration rather than a redesign.
+@TableIndex(name: 'idx_suppliers_dirty', columns: {#isDirty})
+@TableIndex(name: 'idx_suppliers_name', columns: {#name})
+class Suppliers extends Table with SyncedRow {
+  TextColumn get name => text().withLength(min: 1, max: 160)();
+  TextColumn get phone => text().nullable()();
+  TextColumn get address => text().nullable()();
+  TextColumn get note => text().nullable()();
+
+  /// Reserved for GST.
+  TextColumn get gstin => text().nullable()();
+
+  TextColumn get linkedCustomerId => text().nullable()();
+
+  /// CACHE. Paise. Derived from ledger_entries and rebuildable; only
+  /// PurchaseDao writes it.
+  ///
+  /// Signed the same way as every other ledger figure: positive means owed to
+  /// Ramesh. A supplier he owes money to therefore sits at a NEGATIVE balance.
+  /// Use `payable` in the domain layer to read it the way he thinks about it.
+  /// The sign is not flipped here because `cache == SUM(ledger)` is the one
+  /// invariant the rebuild checks, and an exception to it is how caches rot.
+  IntColumn get balance => integer().withDefault(const Constant(0))();
+}
+
+/// What Ramesh bought. Stock goes up, and what he owes the supplier goes up.
+///
+/// Unlike a bill this carries no number of ours: the document that matters is
+/// the supplier's own invoice, so [supplierBillNo] records theirs.
+@TableIndex(name: 'idx_purchases_supplier', columns: {#supplierId})
+@TableIndex(name: 'idx_purchases_occurred', columns: {#occurredAt})
+@TableIndex(name: 'idx_purchases_dirty', columns: {#isDirty})
+class Purchases extends Table with SyncedRow {
+  TextColumn get supplierId => text().references(Suppliers, #id)();
+
+  /// Snapshot of the name at the time, so a later rename does not change what
+  /// an old purchase says.
+  TextColumn get supplierName => text().nullable()();
+
+  /// The supplier's own invoice number, as printed on their bill.
+  TextColumn get supplierBillNo => text().nullable()();
+
+  IntColumn get subtotal => integer().withDefault(const Constant(0))();
+  TextColumn get discountType => text().withDefault(const Constant('none'))();
+  IntColumn get discountValue => integer().withDefault(const Constant(0))();
+  IntColumn get discountAmount => integer().withDefault(const Constant(0))();
+  IntColumn get total => integer().withDefault(const Constant(0))();
+
+  /// CACHE. Paise. Sum of this purchase's payments, stored positive.
+  IntColumn get amountPaid => integer().withDefault(const Constant(0))();
+
+  IntColumn get occurredAt => integer()();
+  TextColumn get note => text().nullable()();
+}
+
+@TableIndex(name: 'idx_purchase_lines_purchase', columns: {#purchaseId})
+@TableIndex(name: 'idx_purchase_lines_item', columns: {#itemId})
+@TableIndex(name: 'idx_purchase_lines_dirty', columns: {#isDirty})
+class PurchaseLines extends Table with SyncedRow {
+  TextColumn get purchaseId => text().references(Purchases, #id)();
+
+  /// Null if the item was deleted afterwards; the snapshot below still reads
+  /// correctly.
+  TextColumn get itemId => text().nullable().references(Items, #id)();
+
+  TextColumn get name => text()();
+  TextColumn get unit => text().withDefault(const Constant('pcs'))();
+  IntColumn get qty => integer()();
+
+  /// Paise per unit. On a purchase the price IS the cost, and this is the
+  /// figure carried onto the stock movement so profit stays traceable.
+  IntColumn get unitCost => integer()();
+
+  IntColumn get lineTotal => integer()();
+
+  /// Reserved for GST.
+  IntColumn get taxRateBp => integer().withDefault(const Constant(0))();
+
+  IntColumn get position => integer().withDefault(const Constant(0))();
+}
+

@@ -261,12 +261,5 @@ class _LedgerRow extends StatelessWidget {
     );
   }
 
-  String _label(LedgerReason reason) => switch (reason) {
-        LedgerReason.sale => 'Bill',
-        LedgerReason.saleReversal => 'Bill corrected',
-        LedgerReason.paymentIn => 'Payment received',
-        LedgerReason.paymentInReversal => 'Payment reversed',
-        LedgerReason.opening => 'Opening balance',
-        LedgerReason.adjustment => 'Adjusted by hand',
-      };
+  String _label(LedgerReason reason) => ledgerReasonLabel(reason);
 }

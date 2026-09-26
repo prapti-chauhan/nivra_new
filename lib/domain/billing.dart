@@ -126,6 +126,10 @@ enum LedgerReason {
   saleReversal('sale_reversal'),
   paymentIn('payment_in'),
   paymentInReversal('payment_in_reversal'),
+  purchase('purchase'),
+  purchaseReversal('purchase_reversal'),
+  paymentOut('payment_out'),
+  paymentOutReversal('payment_out_reversal'),
   opening('opening'),
   adjustment('adjustment');
 
@@ -145,3 +149,27 @@ enum LedgerReason {
 /// prefix later never rewrites an old bill.
 String invoiceLabel({required String prefix, required int number}) =>
     prefix.isEmpty ? '$number' : '$prefix$number';
+
+/// A supplier balance read the way Ramesh thinks about it.
+///
+/// Ledger figures are signed so that positive means owed to him, which leaves
+/// a supplier he owes sitting at a negative balance. The sign is flipped here,
+/// at the edge, rather than in the stored cache — see the note on
+/// `Suppliers.balance`.
+int payableFromBalance(int balance) => -balance;
+
+/// How a ledger row reads to Ramesh. Shared by the customer and supplier
+/// ledgers so the same event is never described two different ways.
+String ledgerReasonLabel(LedgerReason reason) => switch (reason) {
+      LedgerReason.sale => 'Bill',
+      LedgerReason.saleReversal => 'Bill corrected',
+      LedgerReason.paymentIn => 'Payment received',
+      LedgerReason.paymentInReversal => 'Payment reversed',
+      LedgerReason.purchase => 'Purchase',
+      LedgerReason.purchaseReversal => 'Purchase removed',
+      LedgerReason.paymentOut => 'Payment made',
+      LedgerReason.paymentOutReversal => 'Payment reversed',
+      LedgerReason.opening => 'Opening balance',
+      LedgerReason.adjustment => 'Adjusted by hand',
+    };
+

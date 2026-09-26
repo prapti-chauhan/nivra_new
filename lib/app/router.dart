@@ -6,6 +6,12 @@ import '../features/auth/login_screen.dart';
 import '../features/billing/bill_detail_screen.dart';
 import '../features/billing/bill_editor_screen.dart';
 import '../features/billing/invoice_preview_screen.dart';
+import '../features/purchases/purchase_detail_screen.dart';
+import '../features/purchases/purchase_editor_screen.dart';
+import '../features/purchases/purchases_screen.dart';
+import '../features/suppliers/supplier_detail_screen.dart';
+import '../features/suppliers/supplier_edit_screen.dart';
+import '../features/suppliers/suppliers_screen.dart';
 import '../features/billing/bills_screen.dart';
 import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
@@ -144,6 +150,53 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
 
+      GoRoute(
+        path: '/suppliers',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const SuppliersScreen(),
+        routes: [
+          GoRoute(
+            path: 'new',
+            parentNavigatorKey: _rootKey,
+            builder: (context, state) => const SupplierEditScreen(),
+          ),
+          GoRoute(
+            path: ':id',
+            parentNavigatorKey: _rootKey,
+            builder: (context, state) =>
+                SupplierDetailScreen(supplierId: state.pathParameters['id']!),
+            routes: [
+              GoRoute(
+                path: 'edit',
+                parentNavigatorKey: _rootKey,
+                builder: (context, state) => SupplierEditScreen(
+                  supplierId: state.pathParameters['id']!,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      GoRoute(
+        path: '/purchases',
+        parentNavigatorKey: _rootKey,
+        builder: (context, state) => const PurchasesScreen(),
+        routes: [
+          GoRoute(
+            path: 'new',
+            parentNavigatorKey: _rootKey,
+            builder: (context, state) => PurchaseEditorScreen(
+              supplierId: state.uri.queryParameters['supplier'],
+            ),
+          ),
+          GoRoute(
+            path: ':id',
+            parentNavigatorKey: _rootKey,
+            builder: (context, state) =>
+                PurchaseDetailScreen(purchaseId: state.pathParameters['id']!),
+          ),
+        ],
+      ),
       GoRoute(
         path: '/sync',
         parentNavigatorKey: _rootKey,

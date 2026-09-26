@@ -280,6 +280,24 @@ class SyncService {
           rows.map(BillingMappers.paymentToJson).toList(),
           {for (final r in rows) r.id: r.updatedAt},
         );
+      case SyncTables.suppliers:
+        final rows = await _syncDao.dirtySuppliers();
+        return (
+          rows.map(BillingMappers.supplierToJson).toList(),
+          {for (final r in rows) r.id: r.updatedAt},
+        );
+      case SyncTables.purchases:
+        final rows = await _syncDao.dirtyPurchases();
+        return (
+          rows.map(BillingMappers.purchaseToJson).toList(),
+          {for (final r in rows) r.id: r.updatedAt},
+        );
+      case SyncTables.purchaseLines:
+        final rows = await _syncDao.dirtyPurchaseLines();
+        return (
+          rows.map(BillingMappers.purchaseLineToJson).toList(),
+          {for (final r in rows) r.id: r.updatedAt},
+        );
       default:
         return (const <Map<String, dynamic>>[], const <String, int>{});
     }
@@ -334,6 +352,15 @@ class SyncService {
           case SyncTables.payments:
             await _syncDao
                 .upsertPulledPayment(BillingMappers.paymentFromJson(json));
+          case SyncTables.suppliers:
+            await _syncDao
+                .upsertPulledSupplier(BillingMappers.supplierFromJson(json));
+          case SyncTables.purchases:
+            await _syncDao
+                .upsertPulledPurchase(BillingMappers.purchaseFromJson(json));
+          case SyncTables.purchaseLines:
+            await _syncDao.upsertPulledPurchaseLine(
+                BillingMappers.purchaseLineFromJson(json));
         }
         applied++;
       }

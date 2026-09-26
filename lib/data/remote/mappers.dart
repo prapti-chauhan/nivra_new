@@ -332,6 +332,8 @@ extension BillingMappers on RowMappers {
         'deleted_at': row.deletedAt,
         'customer_id': row.customerId,
         'bill_id': row.billId,
+        'supplier_id': row.supplierId,
+        'purchase_id': row.purchaseId,
         'amount': row.amount,
         'method': row.method,
         'occurred_at': row.occurredAt,
@@ -348,10 +350,131 @@ extension BillingMappers on RowMappers {
         serverUpdatedAt: Value((json['server_updated_at'] as num?)?.toInt()),
         customerId: Value(json['customer_id'] as String?),
         billId: Value(json['bill_id'] as String?),
+        supplierId: Value(json['supplier_id'] as String?),
+        purchaseId: Value(json['purchase_id'] as String?),
         amount: Value((json['amount'] as num?)?.toInt() ?? 0),
         method: Value(json['method'] as String? ?? 'cash'),
         occurredAt: Value((json['occurred_at'] as num?)?.toInt() ?? 0),
         note: Value(json['note'] as String?),
         isDirty: const Value(false),
       );
+
+  // --- suppliers -----------------------------------------------------------
+  //
+  // `balance` is absent on purpose, exactly as `customers.balance` is: the
+  // cache is derived locally from the ledger and never crosses the wire.
+
+  static Map<String, dynamic> supplierToJson(Supplier row) => {
+        'id': row.id,
+        'user_id': row.userId,
+        'created_at': row.createdAt,
+        'updated_at': row.updatedAt,
+        'deleted_at': row.deletedAt,
+        'name': row.name,
+        'phone': row.phone,
+        'address': row.address,
+        'note': row.note,
+        'gstin': row.gstin,
+        'linked_customer_id': row.linkedCustomerId,
+      };
+
+  static SuppliersCompanion supplierFromJson(Map<String, dynamic> json) =>
+      SuppliersCompanion(
+        id: Value(json['id'] as String),
+        userId: Value(json['user_id'] as String),
+        createdAt: Value((json['created_at'] as num?)?.toInt() ?? 0),
+        updatedAt: Value((json['updated_at'] as num?)?.toInt() ?? 0),
+        deletedAt: Value((json['deleted_at'] as num?)?.toInt()),
+        serverUpdatedAt: Value((json['server_updated_at'] as num?)?.toInt()),
+        name: Value(json['name'] as String? ?? ''),
+        phone: Value(json['phone'] as String?),
+        address: Value(json['address'] as String?),
+        note: Value(json['note'] as String?),
+        gstin: Value(json['gstin'] as String?),
+        linkedCustomerId: Value(json['linked_customer_id'] as String?),
+        isDirty: const Value(false),
+      );
+
+  // --- purchases -----------------------------------------------------------
+  //
+  // `amount_paid` stays local for the same reason `bills.amount_paid` does:
+  // it is rebuilt from the payments that arrive alongside.
+
+  static Map<String, dynamic> purchaseToJson(Purchase row) => {
+        'id': row.id,
+        'user_id': row.userId,
+        'created_at': row.createdAt,
+        'updated_at': row.updatedAt,
+        'deleted_at': row.deletedAt,
+        'supplier_id': row.supplierId,
+        'supplier_name': row.supplierName,
+        'supplier_bill_no': row.supplierBillNo,
+        'subtotal': row.subtotal,
+        'discount_type': row.discountType,
+        'discount_value': row.discountValue,
+        'discount_amount': row.discountAmount,
+        'total': row.total,
+        'occurred_at': row.occurredAt,
+        'note': row.note,
+      };
+
+  static PurchasesCompanion purchaseFromJson(Map<String, dynamic> json) =>
+      PurchasesCompanion(
+        id: Value(json['id'] as String),
+        userId: Value(json['user_id'] as String),
+        createdAt: Value((json['created_at'] as num?)?.toInt() ?? 0),
+        updatedAt: Value((json['updated_at'] as num?)?.toInt() ?? 0),
+        deletedAt: Value((json['deleted_at'] as num?)?.toInt()),
+        serverUpdatedAt: Value((json['server_updated_at'] as num?)?.toInt()),
+        supplierId: Value(json['supplier_id'] as String? ?? ''),
+        supplierName: Value(json['supplier_name'] as String?),
+        supplierBillNo: Value(json['supplier_bill_no'] as String?),
+        subtotal: Value((json['subtotal'] as num?)?.toInt() ?? 0),
+        discountType: Value(json['discount_type'] as String? ?? 'none'),
+        discountValue: Value((json['discount_value'] as num?)?.toInt() ?? 0),
+        discountAmount: Value((json['discount_amount'] as num?)?.toInt() ?? 0),
+        total: Value((json['total'] as num?)?.toInt() ?? 0),
+        occurredAt: Value((json['occurred_at'] as num?)?.toInt() ?? 0),
+        note: Value(json['note'] as String?),
+        isDirty: const Value(false),
+      );
+
+  static Map<String, dynamic> purchaseLineToJson(PurchaseLine row) => {
+        'id': row.id,
+        'user_id': row.userId,
+        'created_at': row.createdAt,
+        'updated_at': row.updatedAt,
+        'deleted_at': row.deletedAt,
+        'purchase_id': row.purchaseId,
+        'item_id': row.itemId,
+        'name': row.name,
+        'unit': row.unit,
+        'qty': row.qty,
+        'unit_cost': row.unitCost,
+        'line_total': row.lineTotal,
+        'tax_rate_bp': row.taxRateBp,
+        'position': row.position,
+      };
+
+  static PurchaseLinesCompanion purchaseLineFromJson(
+          Map<String, dynamic> json) =>
+      PurchaseLinesCompanion(
+        id: Value(json['id'] as String),
+        userId: Value(json['user_id'] as String),
+        createdAt: Value((json['created_at'] as num?)?.toInt() ?? 0),
+        updatedAt: Value((json['updated_at'] as num?)?.toInt() ?? 0),
+        deletedAt: Value((json['deleted_at'] as num?)?.toInt()),
+        serverUpdatedAt: Value((json['server_updated_at'] as num?)?.toInt()),
+        purchaseId: Value(json['purchase_id'] as String? ?? ''),
+        itemId: Value(json['item_id'] as String?),
+        name: Value(json['name'] as String? ?? ''),
+        unit: Value(json['unit'] as String? ?? 'pcs'),
+        qty: Value((json['qty'] as num?)?.toInt() ?? 0),
+        unitCost: Value((json['unit_cost'] as num?)?.toInt() ?? 0),
+        lineTotal: Value((json['line_total'] as num?)?.toInt() ?? 0),
+        taxRateBp: Value((json['tax_rate_bp'] as num?)?.toInt() ?? 0),
+        position: Value((json['position'] as num?)?.toInt() ?? 0),
+        isDirty: const Value(false),
+      );
 }
+
