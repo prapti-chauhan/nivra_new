@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../app/providers.dart';
 import '../../core/money.dart';
+import '../../core/theme.dart';
 import '../../core/quantity.dart';
 
 class PurchaseDetailScreen extends ConsumerWidget {
@@ -60,8 +61,7 @@ class PurchaseDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   Text(
                     Money.format(purchase.total),
-                    style: theme.textTheme.headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    style: theme.textTheme.moneyLarge,
                   ),
                   if (due > 0)
                     Text(

@@ -8,7 +8,9 @@ import '../data/pdf/invoice_fonts.dart';
 import '../data/pdf/invoice_fonts_flutter.dart';
 import '../data/pdf/invoice_from_rows.dart';
 import '../data/pdf/invoice_pdf.dart';
+import '../data/reports/report_queries.dart';
 import '../domain/invoice.dart';
+import '../domain/reports.dart';
 import '../data/remote/supabase_config.dart';
 import '../data/remote/sync_api.dart';
 import '../data/sync/connectivity_monitor.dart';
@@ -267,6 +269,70 @@ final purchaseLinesProvider =
     StreamProvider.family<List<PurchaseLine>, String>(
   (ref, id) => ref.watch(purchaseDaoProvider).watchPurchaseLines(id),
 );
+
+// ---------------------------------------------------------------------------
+// Reports.
+// ---------------------------------------------------------------------------
+
+final reportQueriesProvider = Provider<ReportQueries>(
+  (ref) => ReportQueries(ref.watch(databaseProvider)),
+);
+
+/// Which span the reports are looking at. Shared by every report screen so
+/// choosing "This month" once means the profit screen agrees with the sales
+/// screen it was opened from.
+final reportPeriodProvider =
+    NotifierProvider<ReportPeriodChoice, ReportPeriod>(ReportPeriodChoice.new);
+
+class ReportPeriodChoice extends Notifier<ReportPeriod> {
+  @override
+  ReportPeriod build() => ReportPeriod.today;
+
+  void choose(ReportPeriod period) => state = period;
+}
+
+/// "Now" always comes from the database's clock, never `DateTime.now()`, so a
+/// test that pins the clock pins the report boundaries too.
+DateTime _now(Ref ref) => DateTime.fromMillisecondsSinceEpoch(
+      ref.read(databaseProvider).clock.nowMillis(),
+    );
+
+/// Every live bill in the chosen period, with its lines. The sales screen and
+/// the profit screen are two views of this one list, which is what guarantees
+/// they cannot disagree.
+final billProfitsProvider = StreamProvider<List<BillProfit>>((ref) {
+  final period = ref.watch(reportPeriodProvider);
+  final range = rangeFor(period, _now(ref));
+  return ref.watch(reportQueriesProvider).watchBillProfits(range);
+});
+
+final profitSummaryProvider = Provider<ProfitSummary>(
+  (ref) => summarise(ref.watch(billProfitsProvider).value ?? const []),
+);
+
+final owedToYouProvider = StreamProvider<List<Customer>>(
+  (ref) => ref.watch(reportQueriesProvider).watchOwedToYou(),
+);
+
+final youOweProvider = StreamProvider<List<Supplier>>(
+  (ref) => ref.watch(reportQueriesProvider).watchYouOwe(),
+);
+
+final stockItemsProvider = StreamProvider<List<Item>>(
+  (ref) => ref.watch(reportQueriesProvider).watchStockItems(),
+);
+
+/// How far back "how fast is this selling" looks. A month smooths out a slow
+/// week without hiding a real change in demand.
+const int reorderWindowDays = 30;
+
+final reorderProvider = StreamProvider<List<ReorderEntry>>((ref) {
+  final since = _now(ref).subtract(const Duration(days: reorderWindowDays));
+  return ref.watch(reportQueriesProvider).watchReorder(
+        sinceMillis: since.millisecondsSinceEpoch,
+        windowDays: reorderWindowDays,
+      );
+});
 
 // ---------------------------------------------------------------------------
 // The bill PDF.

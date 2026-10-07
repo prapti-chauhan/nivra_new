@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../app/providers.dart';
 import '../../core/money.dart';
+import '../../core/theme.dart';
 import '../../data/db/database.dart';
 import '../../domain/billing.dart';
 
@@ -63,8 +64,7 @@ class SupplierDetailScreen extends ConsumerWidget {
                   const SizedBox(height: 4),
                   Text(
                     Money.format(owed.abs()),
-                    style: theme.textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                    style: theme.textTheme.moneyLarge.copyWith(
                       color: owed > 0 ? theme.colorScheme.error : null,
                     ),
                   ),
@@ -215,8 +215,7 @@ class _LedgerRow extends StatelessWidget {
       ),
       trailing: Text(
         '${increasesDebt ? '+' : '-'}${Money.formatCompact(entry.amount.abs())}',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w600,
+        style: theme.textTheme.money.copyWith(
           color: increasesDebt
               ? theme.colorScheme.error
               : theme.colorScheme.onSurfaceVariant,

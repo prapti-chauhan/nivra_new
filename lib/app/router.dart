@@ -7,6 +7,12 @@ import '../features/billing/bill_detail_screen.dart';
 import '../features/billing/bill_editor_screen.dart';
 import '../features/billing/invoice_preview_screen.dart';
 import '../features/purchases/purchase_detail_screen.dart';
+import '../features/reports/owed_report_screen.dart';
+import '../features/reports/profit_report_screen.dart';
+import '../features/reports/reorder_screen.dart';
+import '../features/reports/reports_screen.dart';
+import '../features/reports/sales_report_screen.dart';
+import '../features/reports/stock_report_screen.dart';
 import '../features/purchases/purchase_editor_screen.dart';
 import '../features/purchases/purchases_screen.dart';
 import '../features/suppliers/supplier_detail_screen.dart';
@@ -134,6 +140,36 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) => CustomerDetailScreen(
                       customerId: state.pathParameters['id']!,
                     ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/reports',
+                builder: (context, state) => const ReportsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'sales',
+                    builder: (context, state) => const SalesReportScreen(),
+                  ),
+                  GoRoute(
+                    path: 'profit',
+                    builder: (context, state) => const ProfitReportScreen(),
+                  ),
+                  GoRoute(
+                    path: 'owed',
+                    builder: (context, state) => const OwedReportScreen(),
+                  ),
+                  GoRoute(
+                    path: 'stock',
+                    builder: (context, state) => const StockReportScreen(),
+                  ),
+                  GoRoute(
+                    path: 'reorder',
+                    builder: (context, state) => const ReorderScreen(),
                   ),
                 ],
               ),

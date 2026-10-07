@@ -427,3 +427,99 @@ Two things went wrong while writing that test and are worth remembering:
 - Expenses, other income, and cash versus bank balances.
 - Reports, which is where the costing method finally has to be chosen.
 
+---
+
+# Slice five — reports
+
+## Settled before building
+
+| # | Decision | Chosen | Rejected |
+|---|----------|--------|----------|
+| 18 | Costing for profit | Last purchase cost, frozen onto each bill line at sale | Weighted average; FIFO |
+| 19 | Where reports live | A fifth tab, "Reports" | Under More; a summary strip on the Bills screen |
+| 20 | What "profit" means for now | Profit on goods sold only, and labelled as such | Calling it net profit before expenses exist |
+| 21 | What a low-stock warning says | How fast it is selling and about how many days are left | Quantity alone |
+
+**Costing is last purchase cost (D18), chosen by the owner after the tradeoffs
+were laid out.** It is the only option where a profit figure opens into a short
+list of lines checkable with a calculator. Weighted average and FIFO would each
+need an algorithm he has to take on trust, and both break on this shop's real
+workflow: purchases are entered later, off the supplier's printed invoice, so a
+sale often precedes its own purchase record. The known weakness is price swings:
+a sale from older, cheaper stock is costed at the newer price. A per-line "correct
+this cost" is the likely remedy and is not built.
+
+**Reports got a tab (D19) — a call made without asking, and reversible.**
+Purchases went under More to keep the bar at four. Reports is different:
+"how much did I make" is a daily glance, not a monthly errand. It is one entry
+in `shell.dart` and one branch in `router.dart` to undo.
+
+## Decided while building
+
+- **Every figure opens.** Overview tile -> list of bills -> the lines inside a
+  bill, each showing the cost it was sold against. Three taps from the headline
+  to a single line.
+- **Sales and profit are two views of one list**, `billProfitsProvider`, so they
+  cannot disagree about which bills count.
+- **A bill discount comes out of profit.** Revenue is the bill total, not the sum
+  of its lines.
+- **A zero cost is never treated as free.** It is flagged on the overview, in the
+  profit summary, on the bill and on the line, because profit that silently
+  counts an unknown cost as zero is the one way these screens could mislead. A
+  bill whose lines have not reached the phone yet is flagged the same way.
+- **Profit is not net profit.** There are no expenses in the app yet, so the
+  screen says "profit on goods only" in words rather than letting the number
+  imply more than it is.
+- **Periods are local midnight, weeks start Monday, ranges are half-open.** A
+  bill at 11pm is that day's; a bill at exactly midnight belongs to one period.
+- **Reorder uses `created_at`, not `occurred_at`, and only bill movements.**
+  Editing a bill writes a reversal stamped now and re-applies the sale at the
+  original date, so counting by `occurred_at` would keep the reversal and drop
+  the re-sale and read an edited bill as negative demand. A deleted purchase is
+  also a "reversal" and is not a sale. Both are tested.
+- **Only items with a threshold ever appear** (unchanged from slice one), sorted
+  out of stock first, then fewest days left.
+- **Stock value counts negative stock as nothing**, so a miscount on the shelf
+  cannot shrink the figure below what is actually there.
+- **Owed-to-you and you-owe stay two lists with two totals, never netted.**
+- **Reports only read.** `ReportQueries` is a plain class with no write path,
+  and needs no code generation.
+
+## Verified, not asserted
+
+- `flutter analyze` clean; `flutter test`: **192 passing** (135 before): 33
+  domain, 17 query, 7 click-through.
+- **A second route to the same number.** One test sums live bills and compares
+  with the `sales` account in the ledger after a save, a discounted bill, an
+  edit and a delete. They agree.
+- **Past profit does not move.** A purchase at a higher price changes the item's
+  cost to Rs 24 and the earlier bill still reports against Rs 18.
+- **An edited bill is counted once**, at its current lines.
+- **Cross-tab navigation works.** A row on a report opens a bill that lives in
+  the Bills tab and popping returns to the report, not the Bills tab. Tested
+  against the real router rather than assumed.
+- `flutter build apk --debug` succeeds.
+
+One test assertion was wrong, not the code: with no invoice prefix a bill's
+label is just "1", not "INV-0001" (my sample PDF had hardcoded a label). The
+test now sets a prefix, as a real shop would.
+
+## Not verified
+
+- **Not run on a device, and not looked at.** The screens were exercised in
+  widget tests, which render with a placeholder font, so no one has seen what
+  these screens look like. The PDF got a visual check in slice three; this did
+  not.
+- **"Today" goes stale if the app stays open past midnight.** The period is
+  computed when the provider is built. A shop that never closes the app will see
+  yesterday under "Today" until it restarts.
+- `supabase/schema_v3.sql` is still unapplied, so slice four's sync is still
+  unchecked against Postgres. Reports add no remote schema.
+
+## Still open
+
+- Expenses, other income, and cash versus bank. Until they exist the profit
+  figure cannot become a profit-and-loss.
+- Per-line cost correction, for the price-swing weakness in D18.
+- A custom date range.
+

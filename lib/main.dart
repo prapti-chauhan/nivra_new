@@ -14,9 +14,7 @@ Future<void> main() async {
       publishableKey: SupabaseConfig.publishableKey,
       // The session is kept locally so a week with no signal does not sign
       // Ramesh out of his own data.
-      authOptions: const FlutterAuthClientOptions(
-        autoRefreshToken: true,
-      ),
+      authOptions: const FlutterAuthClientOptions(autoRefreshToken: true),
     );
   }
 

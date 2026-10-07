@@ -16,16 +16,22 @@ class NivraUser {
 
 class AuthFailure implements Exception {
   AuthFailure(this.message);
+
   final String message;
+
   @override
   String toString() => message;
 }
 
 abstract class AuthRepository {
   Stream<NivraUser?> watchUser();
+
   NivraUser? get currentUser;
+
   Future<void> signIn({required String email, required String password});
+
   Future<void> signUp({required String email, required String password});
+
   Future<void> signOut();
 }
 
@@ -117,8 +123,7 @@ class LocalOnlyAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<void> signUp({required String email, required String password}) =>
-      signIn(email: email, password: password);
+  Future<void> signUp({required String email, required String password}) => signIn(email: email, password: password);
 
   @override
   Future<void> signOut() async {

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../core/money.dart';
+import '../../core/theme.dart';
 import '../../domain/billing.dart';
 
 class SuppliersScreen extends ConsumerWidget {
@@ -34,12 +35,7 @@ class SuppliersScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text('You owe', style: theme.textTheme.bodyMedium),
-                  Text(
-                    Money.format(payable),
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  Text(Money.format(payable), style: theme.textTheme.moneyLarge),
                 ],
               ),
             ),
@@ -73,11 +69,10 @@ class SuppliersScreen extends ConsumerWidget {
                             ? null
                             : Text(
                                 Money.formatCompact(owed),
-                                style: theme.textTheme.titleSmall?.copyWith(
+                                style: theme.textTheme.money.copyWith(
                                   color: owed > 0
                                       ? theme.colorScheme.error
                                       : theme.colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                         onTap: () => context.push('/suppliers/${supplier.id}'),

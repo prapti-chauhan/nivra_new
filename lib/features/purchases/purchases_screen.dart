@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../app/providers.dart';
 import '../../core/money.dart';
+import '../../core/theme.dart';
 
 class PurchasesScreen extends ConsumerWidget {
   const PurchasesScreen({super.key});
@@ -73,7 +74,7 @@ class PurchasesScreen extends ConsumerWidget {
                           children: [
                             Text(
                               Money.formatCompact(purchase.total),
-                              style: theme.textTheme.titleSmall,
+                              style: theme.textTheme.money,
                             ),
                             if (due > 0)
                               Text(
