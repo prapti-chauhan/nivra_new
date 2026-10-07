@@ -680,3 +680,67 @@ found it.
 - A custom date range.
 - Devanagari names on the bill.
 
+---
+
+## Slice six, against the live project
+
+This supersedes the "not applied" note above. `schema_v4.sql` has been applied.
+
+**Every one of the six live tests has passed at this commit, and every one has
+also stalled.** Across three full runs the victim changed each time:
+
+| Test | Run A | Run B |
+|---|---|---|
+| stock rebuilds from movements | pass | stalled |
+| credit bill, payment, revision | stalled | pass |
+| credit purchase, payments, delete | pass | stalled |
+| supplier privacy | stalled | pass |
+| **expenses, income, transfer rebuild cash and bank** | **pass** | stalled |
+| **money entries private; server refuses nonsense** | stalled | **pass** |
+
+So the new behaviour is verified, test by test: a second empty device rebuilds
+cash and bank from synced ledger rows, a delete propagates, an anonymous caller
+and a second user read nothing from `money_entries`, a forged insert in someone
+else's name is refused, and the database itself refuses an amount of 0 or -500
+and an unknown `kind` through its check constraints.
+
+**What is not true: there has been no single clean run of all six.**
+
+**What I believe caused the stalls, and how sure I am.** Not sure. The evidence is
+consistent with the laptop sleeping mid-run, and does not prove it:
+
+- The power log shows repeated *Maintenance Sleep* on battery, in blocks of about
+  ten minutes (606 secs), with roughly 45 seconds awake between them.
+- A test with a 3-minute timeout failed at about 10 minutes of wall time; a static
+  analysis that takes seconds took 611. Dart timers do not count time spent
+  asleep, and a connection open when the machine sleeps is dead on wake.
+- Tests take about 35 seconds against awake windows of about 45, so roughly half
+  would straddle a boundary, which is about what was seen.
+
+**Why that is not proven:** a run under `caffeinate -i` still stalled. That
+prevents idle sleep but not lid-close or maintenance sleep, so it may not have
+kept the machine awake, and I could not confirm either way because the shell
+became unavailable before I could read the power log for that window. The honest
+status is: consistent with environmental sleep, not demonstrated. The test that
+would demonstrate it is one clean run with the machine plugged in and awake.
+
+**Two wrong conclusions along the way, both from too little evidence:**
+
+1. I decided the stalls were caused by slice six after one run of the same test
+   on the previous commit passed in 37 seconds. That run simply landed in an
+   awake window. One comparison, confounded by timing, treated as proof.
+2. Before that, I read the first failure as lost money in the till. It was
+   shared state between tests (see above).
+
+What the run did show, which stands regardless of cause: **sync requests had no
+timeout.** A request that never returns holds `_running = true` for the life of
+the app, and because overlapping cycles collapse into the one in flight, every
+later attempt would do nothing. A phone that sleeps or changes network produces
+exactly that. `SupabaseSyncApi` now gives up after 30 seconds, which `_guard`
+already turns into a transient failure and a retry.
+
+**Not yet done:** the unit tests for that timeout
+(`test/data/sync_api_timeout_test.dart`) were written and four of five passed;
+the fifth failed because the fake HTTP response lacked a `request`, which is
+fixed but was not re-run. The change is uncommitted.
+

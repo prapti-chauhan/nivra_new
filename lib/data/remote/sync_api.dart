@@ -47,9 +47,22 @@ abstract class SyncApi {
 }
 
 class SupabaseSyncApi implements SyncApi {
-  SupabaseSyncApi(this._client);
+  SupabaseSyncApi(
+    this._client, {
+    this.requestTimeout = const Duration(seconds: 30),
+  });
 
   final SupabaseClient _client;
+
+  /// How long one request may take before it is given up on.
+  ///
+  /// Without this a request that never returns — a dropped connection on bad
+  /// coverage never fails, it just stops answering — would hold the whole sync
+  /// cycle open for as long as the app runs. Overlapping cycles collapse into
+  /// the one already in flight, so every later attempt would quietly do nothing
+  /// and sync would be dead until the app restarted. A timeout becomes a
+  /// transient failure, which is retried.
+  final Duration requestTimeout;
 
   @override
   Future<List<RemoteAck>> push(
@@ -95,11 +108,13 @@ class SupabaseSyncApi implements SyncApi {
 
   Future<T> _guard<T>(String table, Future<T> Function() body) async {
     try {
-      return await body();
+      return await body().timeout(requestTimeout);
     } on SocketException catch (e) {
       throw TransientSyncException('No network while syncing $table: ${e.message}');
     } on TimeoutException {
-      throw TransientSyncException('Timed out syncing $table');
+      throw TransientSyncException(
+        'Timed out after ${requestTimeout.inSeconds}s syncing $table',
+      );
     } on PostgrestException catch (e) {
       // 23xxx are integrity violations, 42xxx are schema problems, and
       // PGRST20x means the table, column or relationship does not exist.
