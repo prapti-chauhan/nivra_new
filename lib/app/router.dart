@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../domain/cashbook.dart';
 import '../features/auth/login_screen.dart';
 import '../features/billing/bill_detail_screen.dart';
 import '../features/billing/bill_editor_screen.dart';
 import '../features/billing/invoice_preview_screen.dart';
+import '../features/money/account_ledger_screen.dart';
+import '../features/money/money_entry_editor_screen.dart';
+import '../features/money/money_screen.dart';
 import '../features/purchases/purchase_detail_screen.dart';
 import '../features/reports/owed_report_screen.dart';
+import '../features/reports/pnl_screen.dart';
 import '../features/reports/profit_report_screen.dart';
 import '../features/reports/reorder_screen.dart';
 import '../features/reports/reports_screen.dart';
@@ -170,6 +175,40 @@ final routerProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'reorder',
                     builder: (context, state) => const ReorderScreen(),
+                  ),
+                  GoRoute(
+                    path: 'pnl',
+                    builder: (context, state) => const PnlScreen(),
+                  ),
+                  GoRoute(
+                    path: 'money',
+                    builder: (context, state) => const MoneyScreen(),
+                    routes: [
+                      // Full screen above the shell: it is keyboard-heavy and
+                      // the tab bar would eat the room the categories need.
+                      GoRoute(
+                        path: 'new/:kind',
+                        parentNavigatorKey: _rootKey,
+                        builder: (context, state) => MoneyEntryEditorScreen(
+                          kind: MoneyKind.fromWire(state.pathParameters['kind']),
+                        ),
+                      ),
+                      GoRoute(
+                        path: 'entry/:id',
+                        parentNavigatorKey: _rootKey,
+                        builder: (context, state) => MoneyEntryEditorScreen(
+                          entryId: state.pathParameters['id']!,
+                        ),
+                      ),
+                      GoRoute(
+                        path: 'ledger/:method',
+                        builder: (context, state) => AccountLedgerScreen(
+                          method: MoneyMethod.fromWire(
+                            state.pathParameters['method'],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

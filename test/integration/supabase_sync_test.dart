@@ -1,7 +1,7 @@
 @Tags(['integration'])
 library;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Variable, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivra_new/data/db/database.dart';
@@ -10,6 +10,7 @@ import 'package:nivra_new/data/remote/sync_api.dart';
 import 'package:nivra_new/data/sync/connectivity_monitor.dart';
 import 'package:nivra_new/data/sync/sync_service.dart';
 import 'package:nivra_new/domain/billing.dart';
+import 'package:nivra_new/domain/cashbook.dart';
 import 'package:nivra_new/domain/stock.dart';
 import 'package:nivra_new/domain/sync_status.dart';
 import 'package:supabase/supabase.dart';
@@ -517,6 +518,187 @@ void main() {
       'name': 'their own supplier',
     });
     expect(await other.from('suppliers').select('id').eq('id', mine), hasLength(1));
+
+    await other.auth.signOut();
+    await other.dispose();
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('expenses, income and a transfer rebuild cash and bank on a fresh install',
+      () async {
+    final one = AppDatabase.forTesting(NativeDatabase.memory());
+    final moneyOne = MoneyDao(one);
+    final syncOne = SyncService(
+      db: one,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+
+    final expenseId = await moneyOne.addEntry(
+      userId: userId,
+      kind: MoneyKind.expense,
+      amount: 25000,
+      category: 'IT Tea & snacks',
+    );
+    await moneyOne.addEntry(
+      userId: userId,
+      kind: MoneyKind.income,
+      amount: 50000,
+      category: 'IT Scrap sale',
+      method: MoneyMethod.bank,
+    );
+    await moneyOne.addEntry(
+      userId: userId,
+      kind: MoneyKind.transfer,
+      amount: 10000,
+      method: MoneyMethod.cash,
+      toMethod: MoneyMethod.bank,
+    );
+
+    await syncOne.start(userId);
+    await syncOne.syncNow();
+    expect(syncOne.currentStatus.phase, SyncPhase.synced,
+        reason: 'everything should have pushed: ${syncOne.currentStatus.message}');
+    expect(await SyncDao(one).pendingCount(), 0);
+
+    final two = AppDatabase.forTesting(NativeDatabase.memory());
+    final moneyTwo = MoneyDao(two);
+    final syncTwo = SyncService(
+      db: two,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+    await syncTwo.start(userId);
+    await syncTwo.syncNow();
+
+    // Every test in this file shares one user and has put other money through
+    // the same till, so these sums are scoped to rows money entries wrote.
+    Future<int> viaEntries(AppDatabase d, String account) async =>
+        (await d.customSelect(
+          "SELECT COALESCE(SUM(amount), 0) AS t FROM ledger_entries "
+          "WHERE account_type = ? AND source_type = 'money_entry'",
+          variables: [Variable<String>(account)],
+          readsFrom: {d.ledgerEntries},
+        ).getSingle())
+            .read<int>('t');
+
+    final pulled = await moneyTwo.findEntry(expenseId);
+    expect(pulled, isNotNull, reason: 'the expense should have arrived');
+    expect(pulled!.category, 'IT Tea & snacks');
+    expect(pulled.amount, 25000);
+
+    // Neither balance crossed the wire. Both were summed here from ledger rows.
+    // Cash: -250 spent, -100 moved out. Bank: +500 received, +100 moved in.
+    expect(await viaEntries(two, 'cash'), -35000);
+    expect(await viaEntries(two, 'bank'), 60000);
+    expect(await viaEntries(two, 'expense'), 25000);
+    expect(await viaEntries(two, 'other_income'), 50000);
+
+    // --- a delete on device one reaches device two ----------------------
+    await moneyOne.deleteEntry(userId: userId, id: expenseId);
+    await syncOne.syncNow();
+    await syncTwo.syncNow();
+
+    expect((await moneyTwo.findEntry(expenseId))!.deletedAt, isNotNull);
+    expect(await viaEntries(two, 'cash'), -10000,
+        reason: 'the Rs 250 came back to the till on device two');
+    expect(await viaEntries(two, 'expense'), 0);
+
+    await syncOne.stop();
+    await syncTwo.stop();
+    await one.close();
+    await two.close();
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('money entries are private, and the server refuses a nonsense amount',
+      () async {
+    final one = AppDatabase.forTesting(NativeDatabase.memory());
+    final syncOne = SyncService(
+      db: one,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+    final entryId = await MoneyDao(one).addEntry(
+      userId: userId,
+      kind: MoneyKind.expense,
+      amount: 100,
+      category: 'IT rls',
+    );
+    await syncOne.start(userId);
+    await syncOne.syncNow();
+    await syncOne.stop();
+    await one.close();
+
+    expect(await client.from('money_entries').select('id').eq('id', entryId),
+        hasLength(1),
+        reason: 'the owner can see their own entry');
+
+    final anon = SupabaseClient(
+      SupabaseConfig.url,
+      SupabaseConfig.publishableKey,
+      authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    );
+    expect(await anon.from('money_entries').select('id'), isEmpty,
+        reason: 'an anonymous caller reads nothing');
+    await anon.dispose();
+
+    final other = SupabaseClient(
+      SupabaseConfig.url,
+      SupabaseConfig.publishableKey,
+      authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    );
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final res = await other.auth.signUp(
+      email: 'nivra-it-money-$stamp@example.com',
+      password: 'integration-pass-123',
+    );
+    expect(res.session, isNotNull);
+
+    expect(await other.from('money_entries').select('id'), isEmpty,
+        reason: 'a second user sees none of the first user\'s entries');
+
+    await expectLater(
+      other.from('money_entries').insert({
+        'id': 'it-forged-${DateTime.now().microsecondsSinceEpoch}',
+        'user_id': userId,
+        'created_at': 1,
+        'updated_at': 1,
+        'kind': 'expense',
+        'amount': 100,
+        'occurred_at': 1,
+      }),
+      throwsA(isA<PostgrestException>()),
+    );
+
+    // The owner is refused a zero or negative amount by the database itself,
+    // not just by the app — a second line of defence behind the screen.
+    for (final amount in [0, -500]) {
+      await expectLater(
+        client.from('money_entries').insert({
+          'id': 'it-bad-$amount-${DateTime.now().microsecondsSinceEpoch}',
+          'user_id': userId,
+          'created_at': 1,
+          'updated_at': 1,
+          'kind': 'expense',
+          'amount': amount,
+          'occurred_at': 1,
+        }),
+        throwsA(isA<PostgrestException>()),
+        reason: 'an amount of $amount should be refused by a check constraint',
+      );
+    }
+    await expectLater(
+      client.from('money_entries').insert({
+        'id': 'it-badkind-${DateTime.now().microsecondsSinceEpoch}',
+        'user_id': userId,
+        'created_at': 1,
+        'updated_at': 1,
+        'kind': 'gift',
+        'amount': 100,
+        'occurred_at': 1,
+      }),
+      throwsA(isA<PostgrestException>()),
+      reason: 'an unknown kind should be refused by a check constraint',
+    );
 
     await other.auth.signOut();
     await other.dispose();

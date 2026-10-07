@@ -298,6 +298,12 @@ class SyncService {
           rows.map(BillingMappers.purchaseLineToJson).toList(),
           {for (final r in rows) r.id: r.updatedAt},
         );
+      case SyncTables.moneyEntries:
+        final rows = await _syncDao.dirtyMoneyEntries();
+        return (
+          rows.map(BillingMappers.moneyEntryToJson).toList(),
+          {for (final r in rows) r.id: r.updatedAt},
+        );
       default:
         return (const <Map<String, dynamic>>[], const <String, int>{});
     }
@@ -361,6 +367,9 @@ class SyncService {
           case SyncTables.purchaseLines:
             await _syncDao.upsertPulledPurchaseLine(
                 BillingMappers.purchaseLineFromJson(json));
+          case SyncTables.moneyEntries:
+            await _syncDao.upsertPulledMoneyEntry(
+                BillingMappers.moneyEntryFromJson(json));
         }
         applied++;
       }

@@ -8,9 +8,11 @@ import 'package:drift_dev/api/migrations_native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivra_new/core/clock.dart';
 import 'package:nivra_new/data/db/database.dart';
+import 'package:nivra_new/domain/cashbook.dart';
 
 import '../generated_migrations/schema.dart';
 import '../generated_migrations/schema_v2.dart' as v2;
+import '../generated_migrations/schema_v3.dart' as v3;
 
 /// Ramesh already has the app on his phone with real bills in it. A fresh
 /// install exercises `createAll` and would never touch `onUpgrade`, so without
@@ -22,10 +24,10 @@ void main() {
     verifier = SchemaVerifier(GeneratedHelper());
   });
 
-  test('a v2 database upgrades to v3 with the expected shape', () async {
+  test('a v2 database upgrades to the current schema with the expected shape', () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 3);
+    await verifier.migrateAndValidate(db, 4);
     await db.close();
   });
 
@@ -100,7 +102,7 @@ void main() {
       connection,
       clock: FixedClock(1700000000000),
     );
-    await verifier.migrateAndValidate(db, 3);
+    await verifier.migrateAndValidate(db, 4);
 
     final dao = PurchaseDao(db);
     final itemId = await InventoryDao(db).createItem(
@@ -128,4 +130,65 @@ void main() {
     expect((await dao.findSupplier(supplierId))!.balance, -90000);
     await db.close();
   });
+
+  test('a v3 database upgrades to v4 with the expected shape', () async {
+    final connection = await verifier.startAt(3);
+    final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
+    await verifier.migrateAndValidate(db, 4);
+    await db.close();
+  });
+
+  test('a database two versions behind still reaches v4', () async {
+    // A phone that skipped an update goes 2 -> 4 in one open. Each step is
+    // guarded by `from < N`, and this is what proves they chain.
+    final connection = await verifier.startAt(2);
+    final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
+    await verifier.migrateAndValidate(db, 4);
+    await db.close();
+  });
+
+  test('data written under v3 survives, and money entries then work', () async {
+    final dir = await Directory.systemTemp.createTemp('nivra_migration_v3');
+    final file = File('${dir.path}/nivra.sqlite');
+
+    final old = v3.DatabaseAtV3(NativeDatabase(file));
+    await old.customSelect('SELECT 1').get();
+    await old.customStatement(
+      "INSERT INTO suppliers (id, user_id, created_at, updated_at, is_dirty, "
+      "name, balance) VALUES ('s1', 'u1', 1, 1, 0, 'Verma Traders', -90000)",
+    );
+    await old.customStatement(
+      "INSERT INTO ledger_entries (id, user_id, created_at, updated_at, "
+      "is_dirty, account_type, amount, reason, occurred_at) "
+      "VALUES ('l1', 'u1', 1, 1, 0, 'cash', 250000, 'payment_in', 1)",
+    );
+    await old.close();
+
+    final upgraded = AppDatabase.forTesting(
+      NativeDatabase(file),
+      clock: FixedClock(1700000000000),
+    );
+
+    final supplier = await upgraded
+        .customSelect('SELECT name, balance FROM suppliers', readsFrom: {})
+        .getSingle();
+    expect(supplier.read<String>('name'), 'Verma Traders');
+    expect(supplier.read<int>('balance'), -90000);
+
+    // The cash that was already in the ledger is still the till, and a new
+    // expense moves it.
+    final dao = MoneyDao(upgraded);
+    expect(await dao.balanceOf(MoneyMethod.cash), 250000);
+    await dao.addEntry(
+      userId: 'u1',
+      kind: MoneyKind.expense,
+      amount: 5000,
+      category: 'Tea',
+    );
+    expect(await dao.balanceOf(MoneyMethod.cash), 245000);
+
+    await upgraded.close();
+    await dir.delete(recursive: true);
+  });
 }
+

@@ -6,6 +6,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 import '../../core/clock.dart';
 import '../../core/ids.dart';
 import '../../domain/billing.dart';
+import '../../domain/cashbook.dart';
 import '../../domain/stock.dart';
 import 'tables.dart';
 
@@ -25,10 +26,11 @@ part 'database.g.dart';
     Suppliers,
     Purchases,
     PurchaseLines,
+    MoneyEntries,
     SyncStates,
     SyncLogs,
   ],
-  daos: [InventoryDao, PartyDao, BillingDao, PurchaseDao, SyncDao],
+  daos: [InventoryDao, PartyDao, BillingDao, PurchaseDao, MoneyDao, SyncDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase({this._clock = const Clock()})
@@ -42,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   Clock get clock => _clock;
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -107,6 +109,12 @@ class AppDatabase extends _$AppDatabase {
             ]) {
               await m.createIndex(index);
             }
+          }
+          if (from < 4) {
+            // Slice six. Same reason as before for naming things explicitly.
+            await m.createTable(moneyEntries);
+            await m.createIndex(idxMoneyEntriesOccurred);
+            await m.createIndex(idxMoneyEntriesDirty);
           }
         },
         beforeOpen: (details) async {
@@ -398,6 +406,7 @@ class SyncTables {
   static const String suppliers = 'suppliers';
   static const String purchases = 'purchases';
   static const String purchaseLines = 'purchase_lines';
+  static const String moneyEntries = 'money_entries';
 
   /// Push order matters: a row must never reach Supabase before the row it
   /// points at. bill_lines reference bills and items; payments reference both
@@ -411,6 +420,7 @@ class SyncTables {
     billLines,
     purchases,
     purchaseLines,
+    moneyEntries,
     stockMovements,
     ledgerEntries,
     payments,
@@ -455,6 +465,7 @@ class CacheRepairReport {
     Suppliers,
     Purchases,
     PurchaseLines,
+    MoneyEntries,
     SyncStates,
     SyncLogs,
   ],
@@ -533,7 +544,8 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
       (SELECT COUNT(*) FROM payments WHERE is_dirty = 1) +
       (SELECT COUNT(*) FROM suppliers WHERE is_dirty = 1) +
       (SELECT COUNT(*) FROM purchases WHERE is_dirty = 1) +
-      (SELECT COUNT(*) FROM purchase_lines WHERE is_dirty = 1) AS pending
+      (SELECT COUNT(*) FROM purchase_lines WHERE is_dirty = 1) +
+      (SELECT COUNT(*) FROM money_entries WHERE is_dirty = 1) AS pending
   ''';
 
   Future<int> pendingCount() async {
@@ -589,6 +601,7 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
         suppliers,
         purchases,
         purchaseLines,
+        moneyEntries,
       };
 
   Set<TableInfo> _tablesFor(String table) => switch (table) {
@@ -604,6 +617,7 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
         SyncTables.suppliers => {suppliers},
         SyncTables.purchases => {purchases},
         SyncTables.purchaseLines => {purchaseLines},
+        SyncTables.moneyEntries => {moneyEntries},
         _ => const {},
       };
 
@@ -632,6 +646,10 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
 
   Future<List<PurchaseLine>> dirtyPurchaseLines({int limit = 500}) =>
       (select(purchaseLines)..where((t) => t.isDirty.equals(true))..limit(limit))
+          .get();
+
+  Future<List<MoneyEntry>> dirtyMoneyEntries({int limit = 200}) =>
+      (select(moneyEntries)..where((t) => t.isDirty.equals(true))..limit(limit))
           .get();
 
   Future<void> upsertPulledItem(ItemsCompanion row) =>
@@ -671,6 +689,9 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
 
   Future<void> upsertPulledPurchaseLine(PurchaseLinesCompanion row) =>
       into(purchaseLines).insertOnConflictUpdate(row);
+
+  Future<void> upsertPulledMoneyEntry(MoneyEntriesCompanion row) =>
+      into(moneyEntries).insertOnConflictUpdate(row);
 
   Future<int> cursorFor(String table) async {
     final row = await (select(syncStates)
@@ -2348,5 +2369,360 @@ class PurchaseDao extends DatabaseAccessor<AppDatabase>
       updates: {purchases},
       updateKind: UpdateKind.update,
     );
+  }
+}
+
+/// Expenses, other income, transfers, and counting the till.
+///
+/// The only thing allowed to write a money entry or to move cash and bank by
+/// hand. Cash and bank have no cached balance anywhere: each is a sum over its
+/// ledger account, so there is nothing here that can drift and nothing to
+/// rebuild — which is why this DAO has no repair method.
+@DriftAccessor(tables: [MoneyEntries, LedgerEntries])
+class MoneyDao extends DatabaseAccessor<AppDatabase> with _$MoneyDaoMixin {
+  MoneyDao(super.db);
+
+  Clock get _clock => attachedDatabase.clock;
+  PartyDao get _parties => PartyDao(attachedDatabase);
+
+  static const String _source = 'money_entry';
+
+  // --- reads ---------------------------------------------------------------
+
+  Future<MoneyEntry?> findEntry(String id) =>
+      (select(moneyEntries)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Stream<MoneyEntry?> watchEntry(String id) =>
+      (select(moneyEntries)..where((t) => t.id.equals(id))).watchSingleOrNull();
+
+  /// Categories he has used for [kind], most recently used first, so the one
+  /// he used yesterday is the first one offered today.
+  Stream<List<String>> watchRecentCategories(MoneyKind kind) {
+    return customSelect(
+      "SELECT category FROM money_entries "
+      "WHERE kind = ? AND deleted_at IS NULL AND category IS NOT NULL "
+      "AND TRIM(category) != '' "
+      "GROUP BY LOWER(TRIM(category)) "
+      "ORDER BY MAX(occurred_at) DESC, MAX(created_at) DESC LIMIT 20",
+      variables: [Variable<String>(kind.wire)],
+      readsFrom: {moneyEntries},
+    ).watch().map(
+          (rows) => [for (final r in rows) r.read<String>('category')],
+        );
+  }
+
+  /// What is in the till and the bank right now: a sum over the ledger, so it
+  /// agrees with every other figure by construction.
+  Future<int> balanceOf(MoneyMethod method) async {
+    final row = await customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS total FROM ledger_entries '
+      'WHERE account_type = ? AND account_id IS NULL',
+      variables: [Variable<String>(method.account.wire)],
+      readsFrom: {ledgerEntries},
+    ).getSingle();
+    return row.read<int>('total');
+  }
+
+  Stream<CashPosition> watchCashPosition() {
+    return customSelect(
+      '''
+      SELECT
+        COALESCE(SUM(CASE WHEN account_type = 'cash' THEN amount END), 0) AS cash,
+        COALESCE(SUM(CASE WHEN account_type = 'bank' THEN amount END), 0) AS bank
+      FROM ledger_entries
+      WHERE account_type IN ('cash', 'bank') AND account_id IS NULL
+      ''',
+      readsFrom: {ledgerEntries},
+    ).watchSingle().map(
+          (row) => CashPosition(
+            cashPaise: row.read<int>('cash'),
+            bankPaise: row.read<int>('bank'),
+          ),
+        );
+  }
+
+  /// Every row that moved one account, newest first — the answer to "where did
+  /// this number come from".
+  Stream<List<LedgerEntry>> watchAccountLedger(MoneyMethod method) {
+    final query = select(ledgerEntries)
+      ..where((t) =>
+          t.accountType.equals(method.account.wire) & t.accountId.isNull())
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.occurredAt, mode: OrderingMode.desc),
+        (t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc),
+      ]);
+    return query.watch();
+  }
+
+  // --- writes --------------------------------------------------------------
+
+  Future<String> addEntry({
+    required String userId,
+    required MoneyKind kind,
+    required int amount,
+    String? category,
+    MoneyMethod method = MoneyMethod.cash,
+    MoneyMethod? toMethod,
+    int? occurredAt,
+    String? note,
+  }) async {
+    _validate(kind: kind, amount: amount, method: method, toMethod: toMethod);
+
+    final id = newId();
+    final now = _clock.nowMillis();
+    final when = occurredAt ?? now;
+
+    await transaction(() async {
+      await into(moneyEntries).insert(
+        MoneyEntriesCompanion.insert(
+          id: id,
+          userId: userId,
+          createdAt: now,
+          updatedAt: now,
+          kind: kind.wire,
+          amount: amount,
+          category: Value(_cleanCategory(kind, category)),
+          method: Value(method.wire),
+          toMethod: Value(kind == MoneyKind.transfer ? toMethod?.wire : null),
+          occurredAt: when,
+          note: Value(_blankToNull(note)),
+        ),
+      );
+      await _write(
+        userId: userId,
+        id: id,
+        kind: kind,
+        amount: amount,
+        method: method,
+        toMethod: toMethod,
+        occurredAt: when,
+        reversing: false,
+      );
+    });
+
+    return id;
+  }
+
+  /// Changes an entry by reversing what it did and applying what it now says,
+  /// so the ledger shows both. The kind cannot change — turning an expense into
+  /// income is a delete and a fresh entry, which is what actually happened.
+  Future<void> updateEntry({
+    required String userId,
+    required String id,
+    required int amount,
+    String? category,
+    required MoneyMethod method,
+    MoneyMethod? toMethod,
+    int? occurredAt,
+    String? note,
+  }) async {
+    final now = _clock.nowMillis();
+
+    await transaction(() async {
+      final old = await findEntry(id);
+      if (old == null || old.deletedAt != null) {
+        throw StateError('No such entry: $id');
+      }
+      final kind = MoneyKind.fromWire(old.kind);
+      _validate(kind: kind, amount: amount, method: method, toMethod: toMethod);
+
+      await _reverse(userId: userId, entry: old, now: now);
+
+      final when = occurredAt ?? old.occurredAt;
+      await (update(moneyEntries)..where((t) => t.id.equals(id))).write(
+        MoneyEntriesCompanion(
+          amount: Value(amount),
+          category: Value(_cleanCategory(kind, category)),
+          method: Value(method.wire),
+          toMethod: Value(kind == MoneyKind.transfer ? toMethod?.wire : null),
+          occurredAt: Value(when),
+          note: Value(_blankToNull(note)),
+          updatedAt: Value(now),
+          isDirty: const Value(true),
+        ),
+      );
+      await _write(
+        userId: userId,
+        id: id,
+        kind: kind,
+        amount: amount,
+        method: method,
+        toMethod: toMethod,
+        occurredAt: when,
+        reversing: false,
+      );
+    });
+  }
+
+  /// Removes an entry by writing opposing rows. Nothing is edited or deleted
+  /// in the ledger, and [restoreEntry] undoes it.
+  Future<void> deleteEntry({required String userId, required String id}) async {
+    final now = _clock.nowMillis();
+    await transaction(() async {
+      final entry = await findEntry(id);
+      if (entry == null || entry.deletedAt != null) return;
+      await _reverse(userId: userId, entry: entry, now: now);
+      await (update(moneyEntries)..where((t) => t.id.equals(id))).write(
+        MoneyEntriesCompanion(
+          deletedAt: Value(now),
+          updatedAt: Value(now),
+          isDirty: const Value(true),
+        ),
+      );
+    });
+  }
+
+  Future<void> restoreEntry({required String userId, required String id}) async {
+    final now = _clock.nowMillis();
+    await transaction(() async {
+      final entry = await findEntry(id);
+      if (entry == null || entry.deletedAt == null) return;
+      await _write(
+        userId: userId,
+        id: id,
+        kind: MoneyKind.fromWire(entry.kind),
+        amount: entry.amount,
+        method: MoneyMethod.fromWire(entry.method),
+        toMethod:
+            entry.toMethod == null ? null : MoneyMethod.fromWire(entry.toMethod),
+        occurredAt: entry.occurredAt,
+        reversing: false,
+      );
+      await (update(moneyEntries)..where((t) => t.id.equals(id))).write(
+        MoneyEntriesCompanion(
+          deletedAt: const Value(null),
+          updatedAt: Value(now),
+          isDirty: const Value(true),
+        ),
+      );
+    });
+  }
+
+  /// "I counted the till and it says this." Writes the difference as an
+  /// adjustment so the history shows that the figure was corrected, by how much
+  /// and when — not a balance that silently changed.
+  ///
+  /// Returns the difference written, or null if the count already matched and
+  /// nothing was written.
+  Future<int?> correctBalance({
+    required String userId,
+    required MoneyMethod method,
+    required int countedPaise,
+    String? note,
+  }) async {
+    if (countedPaise < 0) {
+      throw ArgumentError('A counted balance cannot be negative');
+    }
+    return transaction(() async {
+      final current = await balanceOf(method);
+      final diff =
+          adjustmentToReach(currentPaise: current, countedPaise: countedPaise);
+      if (diff == 0) return null;
+      await _parties.addLedgerEntry(
+        userId: userId,
+        account: method.account,
+        amount: diff,
+        reason: LedgerReason.adjustment,
+        sourceType: 'balance_count',
+        sourceId: newId(),
+        note: _blankToNull(note) ?? 'Counted',
+      );
+      return diff;
+    });
+  }
+
+  // --- the ledger side of an entry ------------------------------------------
+
+  void _validate({
+    required MoneyKind kind,
+    required int amount,
+    required MoneyMethod method,
+    required MoneyMethod? toMethod,
+  }) {
+    if (amount <= 0) {
+      throw ArgumentError('An amount must be more than zero');
+    }
+    if (kind == MoneyKind.transfer && (toMethod == null || toMethod == method)) {
+      throw ArgumentError('A transfer has to move money somewhere else');
+    }
+  }
+
+  String? _cleanCategory(MoneyKind kind, String? category) {
+    if (kind == MoneyKind.transfer) return null;
+    return _blankToNull(category);
+  }
+
+  String? _blankToNull(String? value) {
+    final t = value?.trim();
+    return (t == null || t.isEmpty) ? null : t;
+  }
+
+  Future<void> _reverse({
+    required String userId,
+    required MoneyEntry entry,
+    required int now,
+  }) =>
+      _write(
+        userId: userId,
+        id: entry.id,
+        kind: MoneyKind.fromWire(entry.kind),
+        amount: entry.amount,
+        method: MoneyMethod.fromWire(entry.method),
+        toMethod:
+            entry.toMethod == null ? null : MoneyMethod.fromWire(entry.toMethod),
+        occurredAt: now,
+        reversing: true,
+      );
+
+  /// Two ledger rows per entry, or their exact opposites when reversing.
+  ///
+  /// Impersonal accounts (expense, other income) are positive in their own
+  /// direction, like sales and purchases are. Cash and bank are signed: money
+  /// in is positive, money out is negative.
+  Future<void> _write({
+    required String userId,
+    required String id,
+    required MoneyKind kind,
+    required int amount,
+    required MoneyMethod method,
+    required MoneyMethod? toMethod,
+    required int occurredAt,
+    required bool reversing,
+  }) async {
+    final sign = reversing ? -1 : 1;
+
+    Future<void> row(
+      LedgerAccount account,
+      int signedAmount,
+      LedgerReason reason,
+    ) =>
+        _parties.addLedgerEntry(
+          userId: userId,
+          account: account,
+          amount: signedAmount * sign,
+          reason: reason,
+          sourceType: _source,
+          sourceId: id,
+          occurredAt: occurredAt,
+        );
+
+    switch (kind) {
+      case MoneyKind.expense:
+        final reason =
+            reversing ? LedgerReason.expenseReversal : LedgerReason.expense;
+        await row(LedgerAccount.expense, amount, reason);
+        await row(method.account, -amount, reason);
+      case MoneyKind.income:
+        final reason = reversing
+            ? LedgerReason.otherIncomeReversal
+            : LedgerReason.otherIncome;
+        await row(LedgerAccount.otherIncome, amount, reason);
+        await row(method.account, amount, reason);
+      case MoneyKind.transfer:
+        final reason =
+            reversing ? LedgerReason.transferReversal : LedgerReason.transfer;
+        await row(method.account, -amount, reason);
+        await row(toMethod!.account, amount, reason);
+    }
   }
 }

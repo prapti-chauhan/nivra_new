@@ -81,6 +81,22 @@ class ReportQueries {
     });
   }
 
+  /// Every live expense, income and transfer dated inside [range], newest
+  /// first. Deleted entries are gone from it; an edited one appears once, at its
+  /// current figures.
+  Stream<List<MoneyEntry>> watchMoneyEntries(DateRange range) {
+    final query = _db.select(_db.moneyEntries)
+      ..where((t) =>
+          t.deletedAt.isNull() &
+          t.occurredAt.isBiggerOrEqualValue(range.fromMillis) &
+          t.occurredAt.isSmallerThanValue(range.toMillis))
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.occurredAt),
+        (t) => OrderingTerm.desc(t.createdAt),
+      ]);
+    return query.watch();
+  }
+
   /// Customers who owe Ramesh, biggest first.
   Stream<List<Customer>> watchOwedToYou() {
     final query = _db.select(_db.customers)

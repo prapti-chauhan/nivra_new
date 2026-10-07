@@ -476,5 +476,40 @@ extension BillingMappers on RowMappers {
         position: Value((json['position'] as num?)?.toInt() ?? 0),
         isDirty: const Value(false),
       );
+
+  // --- money entries -------------------------------------------------------
+
+  static Map<String, dynamic> moneyEntryToJson(MoneyEntry row) => {
+        'id': row.id,
+        'user_id': row.userId,
+        'created_at': row.createdAt,
+        'updated_at': row.updatedAt,
+        'deleted_at': row.deletedAt,
+        'kind': row.kind,
+        'amount': row.amount,
+        'category': row.category,
+        'method': row.method,
+        'to_method': row.toMethod,
+        'occurred_at': row.occurredAt,
+        'note': row.note,
+      };
+
+  static MoneyEntriesCompanion moneyEntryFromJson(Map<String, dynamic> json) =>
+      MoneyEntriesCompanion(
+        id: Value(json['id'] as String),
+        userId: Value(json['user_id'] as String),
+        createdAt: Value((json['created_at'] as num?)?.toInt() ?? 0),
+        updatedAt: Value((json['updated_at'] as num?)?.toInt() ?? 0),
+        deletedAt: Value((json['deleted_at'] as num?)?.toInt()),
+        serverUpdatedAt: Value((json['server_updated_at'] as num?)?.toInt()),
+        kind: Value(json['kind'] as String? ?? 'expense'),
+        amount: Value((json['amount'] as num?)?.toInt() ?? 0),
+        category: Value(json['category'] as String?),
+        method: Value(json['method'] as String? ?? 'cash'),
+        toMethod: Value(json['to_method'] as String?),
+        occurredAt: Value((json['occurred_at'] as num?)?.toInt() ?? 0),
+        note: Value(json['note'] as String?),
+        isDirty: const Value(false),
+      );
 }
 

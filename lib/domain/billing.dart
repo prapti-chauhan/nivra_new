@@ -130,6 +130,12 @@ enum LedgerReason {
   purchaseReversal('purchase_reversal'),
   paymentOut('payment_out'),
   paymentOutReversal('payment_out_reversal'),
+  expense('expense'),
+  expenseReversal('expense_reversal'),
+  otherIncome('other_income'),
+  otherIncomeReversal('other_income_reversal'),
+  transfer('transfer'),
+  transferReversal('transfer_reversal'),
   opening('opening'),
   adjustment('adjustment');
 
@@ -169,6 +175,12 @@ String ledgerReasonLabel(LedgerReason reason) => switch (reason) {
       LedgerReason.purchaseReversal => 'Purchase removed',
       LedgerReason.paymentOut => 'Payment made',
       LedgerReason.paymentOutReversal => 'Payment reversed',
+      LedgerReason.expense => 'Expense',
+      LedgerReason.expenseReversal => 'Expense removed',
+      LedgerReason.otherIncome => 'Money in',
+      LedgerReason.otherIncomeReversal => 'Money in removed',
+      LedgerReason.transfer => 'Moved between cash and bank',
+      LedgerReason.transferReversal => 'Move undone',
       LedgerReason.opening => 'Opening balance',
       LedgerReason.adjustment => 'Adjusted by hand',
     };

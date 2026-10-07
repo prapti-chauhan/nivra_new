@@ -36,6 +36,9 @@ class _SupplierEditScreenState extends ConsumerState<SupplierEditScreen> {
   @override
   Widget build(BuildContext context) {
     final id = widget.supplierId;
+    // Keep the session provider alive so the id is present when a write
+    // happens; an unlistened StreamProvider is still loading on first read.
+    ref.watch(currentUserProvider);
     if (id != null && !_loaded) {
       final supplier = ref.watch(supplierProvider(id)).value;
       if (supplier != null) {
@@ -103,7 +106,12 @@ class _SupplierEditScreenState extends ConsumerState<SupplierEditScreen> {
     }
 
     final userId = ref.read(currentUserProvider).value?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You are signed out. Sign in to save.')),
+      );
+      return;
+    }
 
     setState(() => _saving = true);
     final dao = ref.read(purchaseDaoProvider);

@@ -10762,6 +10762,822 @@ class PurchaseLinesCompanion extends UpdateCompanion<PurchaseLine> {
   }
 }
 
+class $MoneyEntriesTable extends MoneyEntries
+    with TableInfo<$MoneyEntriesTable, MoneyEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MoneyEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _serverUpdatedAtMeta = const VerificationMeta(
+    'serverUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> serverUpdatedAt = GeneratedColumn<int>(
+    'server_updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDirtyMeta = const VerificationMeta(
+    'isDirty',
+  );
+  @override
+  late final GeneratedColumn<bool> isDirty = GeneratedColumn<bool>(
+    'is_dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<int> amount = GeneratedColumn<int>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
+  @override
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+    'category',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _methodMeta = const VerificationMeta('method');
+  @override
+  late final GeneratedColumn<String> method = GeneratedColumn<String>(
+    'method',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('cash'),
+  );
+  static const VerificationMeta _toMethodMeta = const VerificationMeta(
+    'toMethod',
+  );
+  @override
+  late final GeneratedColumn<String> toMethod = GeneratedColumn<String>(
+    'to_method',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _occurredAtMeta = const VerificationMeta(
+    'occurredAt',
+  );
+  @override
+  late final GeneratedColumn<int> occurredAt = GeneratedColumn<int>(
+    'occurred_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    userId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    serverUpdatedAt,
+    isDirty,
+    kind,
+    amount,
+    category,
+    method,
+    toMethod,
+    occurredAt,
+    note,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'money_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MoneyEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('server_updated_at')) {
+      context.handle(
+        _serverUpdatedAtMeta,
+        serverUpdatedAt.isAcceptableOrUnknown(
+          data['server_updated_at']!,
+          _serverUpdatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_dirty')) {
+      context.handle(
+        _isDirtyMeta,
+        isDirty.isAcceptableOrUnknown(data['is_dirty']!, _isDirtyMeta),
+      );
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('category')) {
+      context.handle(
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
+      );
+    }
+    if (data.containsKey('method')) {
+      context.handle(
+        _methodMeta,
+        method.isAcceptableOrUnknown(data['method']!, _methodMeta),
+      );
+    }
+    if (data.containsKey('to_method')) {
+      context.handle(
+        _toMethodMeta,
+        toMethod.isAcceptableOrUnknown(data['to_method']!, _toMethodMeta),
+      );
+    }
+    if (data.containsKey('occurred_at')) {
+      context.handle(
+        _occurredAtMeta,
+        occurredAt.isAcceptableOrUnknown(data['occurred_at']!, _occurredAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_occurredAtMeta);
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MoneyEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MoneyEntry(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      serverUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_updated_at'],
+      ),
+      isDirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_dirty'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount'],
+      )!,
+      category: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category'],
+      ),
+      method: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}method'],
+      )!,
+      toMethod: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}to_method'],
+      ),
+      occurredAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}occurred_at'],
+      )!,
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
+    );
+  }
+
+  @override
+  $MoneyEntriesTable createAlias(String alias) {
+    return $MoneyEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class MoneyEntry extends DataClass implements Insertable<MoneyEntry> {
+  final String id;
+  final String userId;
+  final int createdAt;
+  final int updatedAt;
+
+  /// Set instead of deleting. A hard delete made offline would simply vanish
+  /// and be resurrected by the next pull.
+  final int? deletedAt;
+  final int? serverUpdatedAt;
+  final bool isDirty;
+
+  /// A [MoneyKind] wire value.
+  final String kind;
+
+  /// Paise, always positive. Which way the money moved is [kind] and
+  /// [method], never a sign — a negative expense is a typo, not an income.
+  final int amount;
+
+  /// Free text, null for a transfer. Not a foreign key: there is deliberately
+  /// no categories table to set up before the first expense can be saved.
+  final String? category;
+
+  /// A [MoneyMethod] wire value. For a transfer, where the money came FROM.
+  final String method;
+
+  /// Transfers only: where the money went.
+  final String? toMethod;
+  final int occurredAt;
+  final String? note;
+  const MoneyEntry({
+    required this.id,
+    required this.userId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    this.serverUpdatedAt,
+    required this.isDirty,
+    required this.kind,
+    required this.amount,
+    this.category,
+    required this.method,
+    this.toMethod,
+    required this.occurredAt,
+    this.note,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    if (!nullToAbsent || serverUpdatedAt != null) {
+      map['server_updated_at'] = Variable<int>(serverUpdatedAt);
+    }
+    map['is_dirty'] = Variable<bool>(isDirty);
+    map['kind'] = Variable<String>(kind);
+    map['amount'] = Variable<int>(amount);
+    if (!nullToAbsent || category != null) {
+      map['category'] = Variable<String>(category);
+    }
+    map['method'] = Variable<String>(method);
+    if (!nullToAbsent || toMethod != null) {
+      map['to_method'] = Variable<String>(toMethod);
+    }
+    map['occurred_at'] = Variable<int>(occurredAt);
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    return map;
+  }
+
+  MoneyEntriesCompanion toCompanion(bool nullToAbsent) {
+    return MoneyEntriesCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      serverUpdatedAt: serverUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverUpdatedAt),
+      isDirty: Value(isDirty),
+      kind: Value(kind),
+      amount: Value(amount),
+      category: category == null && nullToAbsent
+          ? const Value.absent()
+          : Value(category),
+      method: Value(method),
+      toMethod: toMethod == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toMethod),
+      occurredAt: Value(occurredAt),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+    );
+  }
+
+  factory MoneyEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MoneyEntry(
+      id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      serverUpdatedAt: serializer.fromJson<int?>(json['serverUpdatedAt']),
+      isDirty: serializer.fromJson<bool>(json['isDirty']),
+      kind: serializer.fromJson<String>(json['kind']),
+      amount: serializer.fromJson<int>(json['amount']),
+      category: serializer.fromJson<String?>(json['category']),
+      method: serializer.fromJson<String>(json['method']),
+      toMethod: serializer.fromJson<String?>(json['toMethod']),
+      occurredAt: serializer.fromJson<int>(json['occurredAt']),
+      note: serializer.fromJson<String?>(json['note']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String>(userId),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'serverUpdatedAt': serializer.toJson<int?>(serverUpdatedAt),
+      'isDirty': serializer.toJson<bool>(isDirty),
+      'kind': serializer.toJson<String>(kind),
+      'amount': serializer.toJson<int>(amount),
+      'category': serializer.toJson<String?>(category),
+      'method': serializer.toJson<String>(method),
+      'toMethod': serializer.toJson<String?>(toMethod),
+      'occurredAt': serializer.toJson<int>(occurredAt),
+      'note': serializer.toJson<String?>(note),
+    };
+  }
+
+  MoneyEntry copyWith({
+    String? id,
+    String? userId,
+    int? createdAt,
+    int? updatedAt,
+    Value<int?> deletedAt = const Value.absent(),
+    Value<int?> serverUpdatedAt = const Value.absent(),
+    bool? isDirty,
+    String? kind,
+    int? amount,
+    Value<String?> category = const Value.absent(),
+    String? method,
+    Value<String?> toMethod = const Value.absent(),
+    int? occurredAt,
+    Value<String?> note = const Value.absent(),
+  }) => MoneyEntry(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    serverUpdatedAt: serverUpdatedAt.present
+        ? serverUpdatedAt.value
+        : this.serverUpdatedAt,
+    isDirty: isDirty ?? this.isDirty,
+    kind: kind ?? this.kind,
+    amount: amount ?? this.amount,
+    category: category.present ? category.value : this.category,
+    method: method ?? this.method,
+    toMethod: toMethod.present ? toMethod.value : this.toMethod,
+    occurredAt: occurredAt ?? this.occurredAt,
+    note: note.present ? note.value : this.note,
+  );
+  MoneyEntry copyWithCompanion(MoneyEntriesCompanion data) {
+    return MoneyEntry(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      serverUpdatedAt: data.serverUpdatedAt.present
+          ? data.serverUpdatedAt.value
+          : this.serverUpdatedAt,
+      isDirty: data.isDirty.present ? data.isDirty.value : this.isDirty,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      category: data.category.present ? data.category.value : this.category,
+      method: data.method.present ? data.method.value : this.method,
+      toMethod: data.toMethod.present ? data.toMethod.value : this.toMethod,
+      occurredAt: data.occurredAt.present
+          ? data.occurredAt.value
+          : this.occurredAt,
+      note: data.note.present ? data.note.value : this.note,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MoneyEntry(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('isDirty: $isDirty, ')
+          ..write('kind: $kind, ')
+          ..write('amount: $amount, ')
+          ..write('category: $category, ')
+          ..write('method: $method, ')
+          ..write('toMethod: $toMethod, ')
+          ..write('occurredAt: $occurredAt, ')
+          ..write('note: $note')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    userId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    serverUpdatedAt,
+    isDirty,
+    kind,
+    amount,
+    category,
+    method,
+    toMethod,
+    occurredAt,
+    note,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MoneyEntry &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.serverUpdatedAt == this.serverUpdatedAt &&
+          other.isDirty == this.isDirty &&
+          other.kind == this.kind &&
+          other.amount == this.amount &&
+          other.category == this.category &&
+          other.method == this.method &&
+          other.toMethod == this.toMethod &&
+          other.occurredAt == this.occurredAt &&
+          other.note == this.note);
+}
+
+class MoneyEntriesCompanion extends UpdateCompanion<MoneyEntry> {
+  final Value<String> id;
+  final Value<String> userId;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int?> deletedAt;
+  final Value<int?> serverUpdatedAt;
+  final Value<bool> isDirty;
+  final Value<String> kind;
+  final Value<int> amount;
+  final Value<String?> category;
+  final Value<String> method;
+  final Value<String?> toMethod;
+  final Value<int> occurredAt;
+  final Value<String?> note;
+  final Value<int> rowid;
+  const MoneyEntriesCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    this.isDirty = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.category = const Value.absent(),
+    this.method = const Value.absent(),
+    this.toMethod = const Value.absent(),
+    this.occurredAt = const Value.absent(),
+    this.note = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  MoneyEntriesCompanion.insert({
+    required String id,
+    required String userId,
+    required int createdAt,
+    required int updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    this.isDirty = const Value.absent(),
+    required String kind,
+    required int amount,
+    this.category = const Value.absent(),
+    this.method = const Value.absent(),
+    this.toMethod = const Value.absent(),
+    required int occurredAt,
+    this.note = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       userId = Value(userId),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt),
+       kind = Value(kind),
+       amount = Value(amount),
+       occurredAt = Value(occurredAt);
+  static Insertable<MoneyEntry> custom({
+    Expression<String>? id,
+    Expression<String>? userId,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? deletedAt,
+    Expression<int>? serverUpdatedAt,
+    Expression<bool>? isDirty,
+    Expression<String>? kind,
+    Expression<int>? amount,
+    Expression<String>? category,
+    Expression<String>? method,
+    Expression<String>? toMethod,
+    Expression<int>? occurredAt,
+    Expression<String>? note,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
+      if (isDirty != null) 'is_dirty': isDirty,
+      if (kind != null) 'kind': kind,
+      if (amount != null) 'amount': amount,
+      if (category != null) 'category': category,
+      if (method != null) 'method': method,
+      if (toMethod != null) 'to_method': toMethod,
+      if (occurredAt != null) 'occurred_at': occurredAt,
+      if (note != null) 'note': note,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  MoneyEntriesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? userId,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int?>? deletedAt,
+    Value<int?>? serverUpdatedAt,
+    Value<bool>? isDirty,
+    Value<String>? kind,
+    Value<int>? amount,
+    Value<String?>? category,
+    Value<String>? method,
+    Value<String?>? toMethod,
+    Value<int>? occurredAt,
+    Value<String?>? note,
+    Value<int>? rowid,
+  }) {
+    return MoneyEntriesCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
+      isDirty: isDirty ?? this.isDirty,
+      kind: kind ?? this.kind,
+      amount: amount ?? this.amount,
+      category: category ?? this.category,
+      method: method ?? this.method,
+      toMethod: toMethod ?? this.toMethod,
+      occurredAt: occurredAt ?? this.occurredAt,
+      note: note ?? this.note,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (serverUpdatedAt.present) {
+      map['server_updated_at'] = Variable<int>(serverUpdatedAt.value);
+    }
+    if (isDirty.present) {
+      map['is_dirty'] = Variable<bool>(isDirty.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<int>(amount.value);
+    }
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
+    }
+    if (method.present) {
+      map['method'] = Variable<String>(method.value);
+    }
+    if (toMethod.present) {
+      map['to_method'] = Variable<String>(toMethod.value);
+    }
+    if (occurredAt.present) {
+      map['occurred_at'] = Variable<int>(occurredAt.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MoneyEntriesCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('isDirty: $isDirty, ')
+          ..write('kind: $kind, ')
+          ..write('amount: $amount, ')
+          ..write('category: $category, ')
+          ..write('method: $method, ')
+          ..write('toMethod: $toMethod, ')
+          ..write('occurredAt: $occurredAt, ')
+          ..write('note: $note, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncStatesTable extends SyncStates
     with TableInfo<$SyncStatesTable, SyncState> {
   @override
@@ -11537,6 +12353,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PurchasesTable purchases = $PurchasesTable(this);
   late final $PaymentsTable payments = $PaymentsTable(this);
   late final $PurchaseLinesTable purchaseLines = $PurchaseLinesTable(this);
+  late final $MoneyEntriesTable moneyEntries = $MoneyEntriesTable(this);
   late final $SyncStatesTable syncStates = $SyncStatesTable(this);
   late final $SyncLogsTable syncLogs = $SyncLogsTable(this);
   late final Index idxItemsDirty = Index(
@@ -11655,10 +12472,19 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'idx_purchase_lines_dirty',
     'CREATE INDEX idx_purchase_lines_dirty ON purchase_lines (is_dirty)',
   );
+  late final Index idxMoneyEntriesOccurred = Index(
+    'idx_money_entries_occurred',
+    'CREATE INDEX idx_money_entries_occurred ON money_entries (occurred_at)',
+  );
+  late final Index idxMoneyEntriesDirty = Index(
+    'idx_money_entries_dirty',
+    'CREATE INDEX idx_money_entries_dirty ON money_entries (is_dirty)',
+  );
   late final InventoryDao inventoryDao = InventoryDao(this as AppDatabase);
   late final PartyDao partyDao = PartyDao(this as AppDatabase);
   late final BillingDao billingDao = BillingDao(this as AppDatabase);
   late final PurchaseDao purchaseDao = PurchaseDao(this as AppDatabase);
+  late final MoneyDao moneyDao = MoneyDao(this as AppDatabase);
   late final SyncDao syncDao = SyncDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -11677,6 +12503,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     purchases,
     payments,
     purchaseLines,
+    moneyEntries,
     syncStates,
     syncLogs,
     idxItemsDirty,
@@ -11708,6 +12535,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     idxPurchaseLinesPurchase,
     idxPurchaseLinesItem,
     idxPurchaseLinesDirty,
+    idxMoneyEntriesOccurred,
+    idxMoneyEntriesDirty,
   ];
 }
 
@@ -19038,6 +19867,390 @@ typedef $$PurchaseLinesTableProcessedTableManager =
       PurchaseLine,
       PrefetchHooks Function({bool purchaseId, bool itemId})
     >;
+typedef $$MoneyEntriesTableCreateCompanionBuilder =
+    MoneyEntriesCompanion Function({
+      required String id,
+      required String userId,
+      required int createdAt,
+      required int updatedAt,
+      Value<int?> deletedAt,
+      Value<int?> serverUpdatedAt,
+      Value<bool> isDirty,
+      required String kind,
+      required int amount,
+      Value<String?> category,
+      Value<String> method,
+      Value<String?> toMethod,
+      required int occurredAt,
+      Value<String?> note,
+      Value<int> rowid,
+    });
+typedef $$MoneyEntriesTableUpdateCompanionBuilder =
+    MoneyEntriesCompanion Function({
+      Value<String> id,
+      Value<String> userId,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int?> deletedAt,
+      Value<int?> serverUpdatedAt,
+      Value<bool> isDirty,
+      Value<String> kind,
+      Value<int> amount,
+      Value<String?> category,
+      Value<String> method,
+      Value<String?> toMethod,
+      Value<int> occurredAt,
+      Value<String?> note,
+      Value<int> rowid,
+    });
+
+class $$MoneyEntriesTableFilterComposer
+    extends Composer<_$AppDatabase, $MoneyEntriesTable> {
+  $$MoneyEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDirty => $composableBuilder(
+    column: $table.isDirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get method => $composableBuilder(
+    column: $table.method,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get toMethod => $composableBuilder(
+    column: $table.toMethod,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get occurredAt => $composableBuilder(
+    column: $table.occurredAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$MoneyEntriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $MoneyEntriesTable> {
+  $$MoneyEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDirty => $composableBuilder(
+    column: $table.isDirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get method => $composableBuilder(
+    column: $table.method,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get toMethod => $composableBuilder(
+    column: $table.toMethod,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get occurredAt => $composableBuilder(
+    column: $table.occurredAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$MoneyEntriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MoneyEntriesTable> {
+  $$MoneyEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isDirty =>
+      $composableBuilder(column: $table.isDirty, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<int> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
+
+  GeneratedColumn<String> get method =>
+      $composableBuilder(column: $table.method, builder: (column) => column);
+
+  GeneratedColumn<String> get toMethod =>
+      $composableBuilder(column: $table.toMethod, builder: (column) => column);
+
+  GeneratedColumn<int> get occurredAt => $composableBuilder(
+    column: $table.occurredAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+}
+
+class $$MoneyEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MoneyEntriesTable,
+          MoneyEntry,
+          $$MoneyEntriesTableFilterComposer,
+          $$MoneyEntriesTableOrderingComposer,
+          $$MoneyEntriesTableAnnotationComposer,
+          $$MoneyEntriesTableCreateCompanionBuilder,
+          $$MoneyEntriesTableUpdateCompanionBuilder,
+          (
+            MoneyEntry,
+            BaseReferences<_$AppDatabase, $MoneyEntriesTable, MoneyEntry>,
+          ),
+          MoneyEntry,
+          PrefetchHooks Function()
+        > {
+  $$MoneyEntriesTableTableManager(_$AppDatabase db, $MoneyEntriesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MoneyEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MoneyEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MoneyEntriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int?> serverUpdatedAt = const Value.absent(),
+                Value<bool> isDirty = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<int> amount = const Value.absent(),
+                Value<String?> category = const Value.absent(),
+                Value<String> method = const Value.absent(),
+                Value<String?> toMethod = const Value.absent(),
+                Value<int> occurredAt = const Value.absent(),
+                Value<String?> note = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => MoneyEntriesCompanion(
+                id: id,
+                userId: userId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                serverUpdatedAt: serverUpdatedAt,
+                isDirty: isDirty,
+                kind: kind,
+                amount: amount,
+                category: category,
+                method: method,
+                toMethod: toMethod,
+                occurredAt: occurredAt,
+                note: note,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String userId,
+                required int createdAt,
+                required int updatedAt,
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int?> serverUpdatedAt = const Value.absent(),
+                Value<bool> isDirty = const Value.absent(),
+                required String kind,
+                required int amount,
+                Value<String?> category = const Value.absent(),
+                Value<String> method = const Value.absent(),
+                Value<String?> toMethod = const Value.absent(),
+                required int occurredAt,
+                Value<String?> note = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => MoneyEntriesCompanion.insert(
+                id: id,
+                userId: userId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                serverUpdatedAt: serverUpdatedAt,
+                isDirty: isDirty,
+                kind: kind,
+                amount: amount,
+                category: category,
+                method: method,
+                toMethod: toMethod,
+                occurredAt: occurredAt,
+                note: note,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$MoneyEntriesTable, MoneyEntry>(table),
+                  BaseReferences<_$AppDatabase, $MoneyEntriesTable, MoneyEntry>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$MoneyEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MoneyEntriesTable,
+      MoneyEntry,
+      $$MoneyEntriesTableFilterComposer,
+      $$MoneyEntriesTableOrderingComposer,
+      $$MoneyEntriesTableAnnotationComposer,
+      $$MoneyEntriesTableCreateCompanionBuilder,
+      $$MoneyEntriesTableUpdateCompanionBuilder,
+      (
+        MoneyEntry,
+        BaseReferences<_$AppDatabase, $MoneyEntriesTable, MoneyEntry>,
+      ),
+      MoneyEntry,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncStatesTableCreateCompanionBuilder =
     SyncStatesCompanion Function({
       required String entity,
@@ -19490,6 +20703,8 @@ class $AppDatabaseManager {
       $$PaymentsTableTableManager(_db, _db.payments);
   $$PurchaseLinesTableTableManager get purchaseLines =>
       $$PurchaseLinesTableTableManager(_db, _db.purchaseLines);
+  $$MoneyEntriesTableTableManager get moneyEntries =>
+      $$MoneyEntriesTableTableManager(_db, _db.moneyEntries);
   $$SyncStatesTableTableManager get syncStates =>
       $$SyncStatesTableTableManager(_db, _db.syncStates);
   $$SyncLogsTableTableManager get syncLogs =>
@@ -19623,6 +20838,21 @@ class PurchaseDaoManager {
       $$LedgerEntriesTableTableManager(_db.attachedDatabase, _db.ledgerEntries);
 }
 
+mixin _$MoneyDaoMixin on DatabaseAccessor<AppDatabase> {
+  $MoneyEntriesTable get moneyEntries => attachedDatabase.moneyEntries;
+  $LedgerEntriesTable get ledgerEntries => attachedDatabase.ledgerEntries;
+  MoneyDaoManager get managers => MoneyDaoManager(this);
+}
+
+class MoneyDaoManager {
+  final _$MoneyDaoMixin _db;
+  MoneyDaoManager(this._db);
+  $$MoneyEntriesTableTableManager get moneyEntries =>
+      $$MoneyEntriesTableTableManager(_db.attachedDatabase, _db.moneyEntries);
+  $$LedgerEntriesTableTableManager get ledgerEntries =>
+      $$LedgerEntriesTableTableManager(_db.attachedDatabase, _db.ledgerEntries);
+}
+
 mixin _$SyncDaoMixin on DatabaseAccessor<AppDatabase> {
   $ItemsTable get items => attachedDatabase.items;
   $StockMovementsTable get stockMovements => attachedDatabase.stockMovements;
@@ -19637,6 +20867,7 @@ mixin _$SyncDaoMixin on DatabaseAccessor<AppDatabase> {
   $PurchasesTable get purchases => attachedDatabase.purchases;
   $PaymentsTable get payments => attachedDatabase.payments;
   $PurchaseLinesTable get purchaseLines => attachedDatabase.purchaseLines;
+  $MoneyEntriesTable get moneyEntries => attachedDatabase.moneyEntries;
   $SyncStatesTable get syncStates => attachedDatabase.syncStates;
   $SyncLogsTable get syncLogs => attachedDatabase.syncLogs;
   SyncDaoManager get managers => SyncDaoManager(this);
@@ -19675,6 +20906,8 @@ class SyncDaoManager {
       $$PaymentsTableTableManager(_db.attachedDatabase, _db.payments);
   $$PurchaseLinesTableTableManager get purchaseLines =>
       $$PurchaseLinesTableTableManager(_db.attachedDatabase, _db.purchaseLines);
+  $$MoneyEntriesTableTableManager get moneyEntries =>
+      $$MoneyEntriesTableTableManager(_db.attachedDatabase, _db.moneyEntries);
   $$SyncStatesTableTableManager get syncStates =>
       $$SyncStatesTableTableManager(_db.attachedDatabase, _db.syncStates);
   $$SyncLogsTableTableManager get syncLogs =>

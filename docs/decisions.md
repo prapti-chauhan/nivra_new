@@ -566,3 +566,117 @@ and leaves their rows behind, because the client cannot delete auth users. Five 
 created while verifying this slice. They are harmless, and removing them is a
 dashboard job.
 
+---
+
+# Slice six — expenses, other income, cash and bank, profit and loss
+
+## Settled before building
+
+| # | Decision | Chosen | Rejected |
+|---|----------|--------|----------|
+| 22 | Cash and bank balances | A sum over the ledger, never stored | A cached `cash`/`bank` column kept in step |
+| 23 | Shape of an entry | One `money_entries` table for expense, income and transfer | Three tables |
+| 24 | Categories | Free text, his recent ones offered first, no categories table | A managed list he must set up first |
+| 25 | What profit means | Profit on goods, plus other income, less expenses | Counting purchases as an expense |
+| 26 | Getting a balance right | "Count the till" writes the difference as a visible adjustment | An opening-balance field; an editable balance |
+| 27 | Correcting an entry | Edit by reversing and re-applying; delete softly with an undo | Overwrite in place; a confirmation dialog |
+
+**The shape of the expense entry (D24) was the owner's to confirm and they went
+with the recommendation:** an amount and a category he types or picks, with no
+setup before the first one. Everything else in this table I decided and am
+recording here so it can be redirected.
+
+**No cached balance (D22).** Cash and bank have no stored figure anywhere. Each
+is `SUM(amount)` over its ledger account, so there is nothing that can drift and
+nothing to rebuild — unlike stock, customer balances and amounts paid, which are
+caches with repair functions. It agrees with every other figure by construction.
+
+**Purchases are not an expense (D25).** Buying stock turns cash into goods; the
+shop is no poorer. The cost appears when the goods are sold, as the cost of what
+was sold (D18). Counting the purchase as well would charge for the same stock
+twice. Transfers are in neither column for the same reason: moving money between
+cash and bank is not earning or spending it. Both are tested.
+
+**No opening balance (D26).** Rather than a field that has to be right once and
+can then never be corrected honestly, "Count the till" takes what is actually
+there and writes the *difference* as an adjustment. It is how the first balance
+gets in, and also how a till that is Rs 20 short gets recorded as exactly that.
+A count that already matches writes nothing, because an adjustment of zero is
+noise in a history that is meant to be honest.
+
+## Decided while building
+
+- **One sign rule, extended.** Impersonal accounts (expense, other income) are
+  positive in their own direction, like sales and purchases. Cash and bank are
+  signed: in is positive, out is negative.
+- **UPI is bank.** Payments already routed anything that is not `cash` to the
+  bank account, so entries do the same rather than inventing a third place.
+- **A transfer has no category and must go somewhere else.** Same-place and
+  nowhere are refused.
+- **The kind of an entry cannot change in an edit.** Turning an expense into
+  income is a delete and a new entry, which is what actually happened.
+- **The database refuses nonsense too.** `amount > 0` and a known `kind` are
+  check constraints, a second line of defence behind the screen.
+- **Entry lives under Reports -> Cash and bank**, three taps from the counter.
+  That is a call I made without asking and it is probably too deep for
+  something done at the counter. A shortcut is the obvious next step.
+
+## A bug found by testing the screen, and its cause
+
+The first run of the new click-through tests failed in four places, all with the
+same symptom: **Save did nothing, and said nothing.** The cause was a screen
+reading `ref.read(currentUserProvider).value?.id` without ever watching the
+provider. An unlistened `StreamProvider` is still loading on first read, so the
+id was null and `_save` returned quietly. `bill_detail_screen.dart` already
+carries a comment warning about exactly this.
+
+Three screens had it, all written by this project's recent slices:
+`money_entry_editor_screen.dart`, `money_screen.dart`, and — **from slice four —
+`supplier_edit_screen.dart`, which had never been exercised through the UI and
+so had shipped with a Save button that could do nothing.** All three now keep the
+provider alive, and a null id now shows "You are signed out. Sign in to save."
+instead of silently returning. A regression test (`supplier_flow_test.dart`) was
+confirmed to fail without the fix ("Bad state: No element", no row saved) and
+pass with it. A grep over every screen that reads the id now finds no other
+offender.
+
+My first reading of the failures was the same wrong shape as an earlier one —
+"the code must be broken" — and a probe printing the provider's value, the row
+count and the route, rather than another round of editing assertions, is what
+found it.
+
+## Verified, not asserted
+
+- `flutter analyze` clean; `flutter test`: **259 passing** (196 before).
+- **A second route to the same number.** Report expenses and income equal the
+  `expense` and `other_income` ledger accounts after adds, an edit, a delete and
+  a transfer.
+- **Migrations:** v2 -> v4 in one open, v3 -> v4, and a v3 database on disk
+  written through the old schema survives and then accepts a money entry.
+  (Two older tests were still calling `migrateAndValidate(db, 3)` against a
+  version-4 database and passing; they now target the current version.)
+- **Click-through against the real router:** an expense in a few taps moves the
+  till; a typed category is kept and offered next time; a zero amount is refused
+  with a reason; profit and loss subtracts what was spent and reads a loss as a
+  loss; counting the till writes a correction that opens in the ledger; delete
+  has a working undo; a transfer changes neither total.
+- `flutter build apk --debug` succeeds.
+
+## Not verified
+
+- **`supabase/schema_v4.sql` is written but NOT applied**, and the two new live
+  tests in `test/integration/supabase_sync_test.dart` have not been run. They
+  will fail against the live project until it is applied. This is the same gap
+  slice four had before it was closed.
+- **Not run on a device and not looked at.** Four slices of screens (reports,
+  suppliers, purchases, money) have only ever been drawn in widget tests, which
+  use a placeholder font.
+- "Today" still goes stale if the app stays open past midnight.
+
+## Still open
+
+- A faster way to record an expense from the counter.
+- Per-line cost correction (D18's price-swing weakness).
+- A custom date range.
+- Devanagari names on the bill.
+

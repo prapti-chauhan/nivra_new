@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/providers.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
+import '../../domain/cashbook.dart';
 import '../../domain/reports.dart';
 import '../sync/sync_indicator.dart';
 
@@ -23,6 +24,9 @@ class ReportsScreen extends ConsumerWidget {
     final owed = ref.watch(totalReceivableProvider).value ?? 0;
     final payable = ref.watch(totalPayableProvider).value ?? 0;
     final low = ref.watch(reorderProvider).value ?? const [];
+    final pnl = ref.watch(profitAndLossProvider);
+    final position = ref.watch(cashPositionProvider).value ??
+        const CashPosition(cashPaise: 0, bankPaise: 0);
     final items = ref.watch(stockItemsProvider).value ?? const [];
 
     final stockValue = items.fold<int>(
@@ -69,7 +73,7 @@ class ReportsScreen extends ConsumerWidget {
             onTap: () => context.push('/reports/sales'),
           ),
           _Tile(
-            label: 'Profit on goods sold',
+            label: 'Profit on goods',
             value: Money.format(summary.profitPaise),
             detail: summary.marginPercent == null
                 ? null
@@ -83,6 +87,15 @@ class ReportsScreen extends ConsumerWidget {
                 : null,
             onTap: () => context.push('/reports/profit'),
           ),
+          _Tile(
+            label: 'Profit',
+            value: Money.format(pnl.netProfitPaise),
+            detail: 'after expenses and other money',
+            valueColor: pnl.netProfitPaise < 0
+                ? Theme.of(context).colorScheme.error
+                : null,
+            onTap: () => context.push('/reports/pnl'),
+          ),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 12, 0, 6),
@@ -92,6 +105,13 @@ class ReportsScreen extends ConsumerWidget {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+          ),
+          _Tile(
+            label: 'Cash and bank',
+            value: Money.format(position.totalPaise),
+            detail: 'cash ${Money.format(position.cashPaise)}'
+                ' · bank ${Money.format(position.bankPaise)}',
+            onTap: () => context.push('/reports/money'),
           ),
           _Tile(
             label: 'Owed to you',
@@ -132,12 +152,14 @@ class _Tile extends StatelessWidget {
     required this.onTap,
     this.detail,
     this.warning,
+    this.valueColor,
   });
 
   final String label;
   final String value;
   final String? detail;
   final String? warning;
+  final Color? valueColor;
   final VoidCallback onTap;
 
   @override
@@ -170,7 +192,10 @@ class _Tile extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Text(value, style: theme.textTheme.moneyLarge),
+                  Text(
+                    value,
+                    style: theme.textTheme.moneyLarge.copyWith(color: valueColor),
+                  ),
                   const SizedBox(width: 4),
                   Icon(
                     Icons.chevron_right,

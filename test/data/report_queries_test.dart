@@ -1,9 +1,11 @@
+import 'package:drift/drift.dart' show Variable;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nivra_new/core/clock.dart';
 import 'package:nivra_new/data/db/database.dart';
 import 'package:nivra_new/data/reports/report_queries.dart';
 import 'package:nivra_new/domain/billing.dart';
+import 'package:nivra_new/domain/cashbook.dart';
 import 'package:nivra_new/domain/reports.dart';
 
 const userId = 'user-1';
@@ -319,4 +321,137 @@ void main() {
       expect(list.first.name, 'out');
     });
   });
+
+  group('money entries', () {
+    late MoneyDao money;
+    setUp(() => money = MoneyDao(db));
+
+    Future<List<MoneyEntry>> entries([DateRange? range]) =>
+        reports.watchMoneyEntries(range ?? everything).first;
+
+    int sum(List<MoneyEntry> list, MoneyKind kind) => list
+        .where((e) => e.kind == kind.wire)
+        .fold<int>(0, (s, e) => s + e.amount);
+
+    test('only entries dated inside the period count', () async {
+      clock.setTo(DateTime(2026, 9, 30, 12).millisecondsSinceEpoch);
+      await money.addEntry(
+          userId: userId, kind: MoneyKind.expense, amount: 100000, category: 'Rent');
+      clock.setTo(now.millisecondsSinceEpoch);
+      await money.addEntry(
+          userId: userId, kind: MoneyKind.expense, amount: 5000, category: 'Tea');
+
+      final thisMonth = await entries(rangeFor(ReportPeriod.thisMonth, now));
+      final lastMonth = await entries(rangeFor(ReportPeriod.lastMonth, now));
+      expect(sum(thisMonth, MoneyKind.expense), 5000);
+      expect(sum(lastMonth, MoneyKind.expense), 100000);
+    });
+
+    test('a deleted entry drops out', () async {
+      final id = await money.addEntry(
+          userId: userId, kind: MoneyKind.expense, amount: 5000);
+      await money.deleteEntry(userId: userId, id: id);
+      expect(await entries(), isEmpty);
+    });
+
+    test('an edited entry appears once, at its current amount', () async {
+      final id = await money.addEntry(
+          userId: userId, kind: MoneyKind.expense, amount: 5000);
+      await money.updateEntry(
+        userId: userId,
+        id: id,
+        amount: 7000,
+        method: MoneyMethod.cash,
+      );
+      final list = await entries();
+      expect(list, hasLength(1));
+      expect(list.single.amount, 7000);
+    });
+
+    test('expenses and income agree with their ledger accounts', () async {
+      // Two independent routes to one number: summing live entries, and
+      // summing the ledger with every reversal included. If they differ, the
+      // P&L is lying about money.
+      final a = await money.addEntry(
+          userId: userId, kind: MoneyKind.expense, amount: 5000, category: 'Tea');
+      await money.addEntry(
+          userId: userId, kind: MoneyKind.expense, amount: 80000, category: 'Rent');
+      final c = await money.addEntry(
+          userId: userId, kind: MoneyKind.income, amount: 30000, category: 'Scrap');
+      await money.updateEntry(
+          userId: userId, id: a, amount: 6500, method: MoneyMethod.bank);
+      await money.deleteEntry(userId: userId, id: c);
+      await money.addEntry(
+        userId: userId,
+        kind: MoneyKind.transfer,
+        amount: 10000,
+        method: MoneyMethod.cash,
+        toMethod: MoneyMethod.bank,
+      );
+
+      Future<int> ledger(String account) async => (await db.customSelect(
+            'SELECT COALESCE(SUM(amount), 0) AS t FROM ledger_entries '
+            'WHERE account_type = ?',
+            variables: [Variable<String>(account)],
+            readsFrom: {db.ledgerEntries},
+          ).getSingle())
+              .read<int>('t');
+
+      final list = await entries();
+      expect(sum(list, MoneyKind.expense), await ledger('expense'));
+      expect(sum(list, MoneyKind.income), await ledger('other_income'));
+    });
+
+    test('the P&L adds up from goods, income and expenses', () async {
+      final id = await item();
+      await billing.saveBill(userId: userId, lines: [draft(id)]);
+      await money.addEntry(
+          userId: userId, kind: MoneyKind.income, amount: 2000, category: 'Scrap');
+      await money.addEntry(
+          userId: userId, kind: MoneyKind.expense, amount: 1500, category: 'Tea');
+      await money.addEntry(
+        userId: userId,
+        kind: MoneyKind.transfer,
+        amount: 99999,
+        method: MoneyMethod.cash,
+        toMethod: MoneyMethod.bank,
+      );
+
+      final goods = summarise(await profits());
+      final list = await entries();
+      final pnl = ProfitAndLoss(
+        salesPaise: goods.salesPaise,
+        costOfGoodsPaise: goods.costPaise,
+        otherIncomePaise: sum(list, MoneyKind.income),
+        expensesPaise: sum(list, MoneyKind.expense),
+      );
+      // Rs 100 sold against Rs 72 = Rs 28, plus Rs 20 in, less Rs 15 out.
+      expect(pnl.profitOnGoodsPaise, 2800);
+      expect(pnl.netProfitPaise, 3300);
+    });
+
+    test('buying stock is not an expense', () async {
+      final id = await item();
+      final supplier =
+          await purchases.createSupplier(userId: userId, name: 'Verma');
+      await purchases.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        lines: [
+          PurchaseLineDraft(
+            itemId: id,
+            name: 'bolt',
+            unit: 'pcs',
+            qty: 50000,
+            unitCost: 1800,
+          ),
+        ],
+        amountPaid: 90000,
+      );
+      // Rs 900 left the till, and the shop is no poorer: it turned cash into
+      // stock. Counting it here as well would charge for the same goods twice.
+      expect(sum(await entries(), MoneyKind.expense), 0);
+    });
+  });
 }
+

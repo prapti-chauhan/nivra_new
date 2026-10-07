@@ -95,8 +95,10 @@ void main() {
 
     expect(find.text('Sales'), findsOneWidget);
     expect(find.text('₹100.00'), findsWidgets);
-    expect(find.text('Profit on goods sold'), findsOneWidget);
-    expect(find.text('₹28.00'), findsOneWidget);
+    expect(find.text('Profit on goods'), findsOneWidget);
+    // With no expenses recorded, goods profit and net profit are the same
+    // figure, so it legitimately appears on both tiles.
+    expect(find.text('₹28.00'), findsNWidgets(2));
     expect(find.text('28% of sales'), findsOneWidget);
   });
 
@@ -113,7 +115,7 @@ void main() {
     await sellBolts();
     await openApp(tester, '/reports');
 
-    await tester.tap(find.text('Profit on goods sold'));
+    await tester.tap(find.text('Profit on goods'));
     await tester.pumpAndSettle();
 
     expect(find.text('Profit'), findsWidgets);

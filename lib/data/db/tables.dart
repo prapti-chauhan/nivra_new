@@ -379,3 +379,36 @@ class PurchaseLines extends Table with SyncedRow {
   IntColumn get position => integer().withDefault(const Constant(0))();
 }
 
+
+// ---------------------------------------------------------------------------
+// Slice six: expenses, other income, and moving money between cash and bank.
+// ---------------------------------------------------------------------------
+
+/// One table for all three because they are mirror images and share every
+/// field Ramesh fills in. [kind] says which.
+///
+/// Carries no cached figure. What an entry did to cash and bank is in
+/// `ledger_entries`, and cash and bank balances are sums over that.
+@TableIndex(name: 'idx_money_entries_occurred', columns: {#occurredAt})
+@TableIndex(name: 'idx_money_entries_dirty', columns: {#isDirty})
+class MoneyEntries extends Table with SyncedRow {
+  /// A [MoneyKind] wire value.
+  TextColumn get kind => text()();
+
+  /// Paise, always positive. Which way the money moved is [kind] and
+  /// [method], never a sign — a negative expense is a typo, not an income.
+  IntColumn get amount => integer()();
+
+  /// Free text, null for a transfer. Not a foreign key: there is deliberately
+  /// no categories table to set up before the first expense can be saved.
+  TextColumn get category => text().nullable()();
+
+  /// A [MoneyMethod] wire value. For a transfer, where the money came FROM.
+  TextColumn get method => text().withDefault(const Constant('cash'))();
+
+  /// Transfers only: where the money went.
+  TextColumn get toMethod => text().nullable()();
+
+  IntColumn get occurredAt => integer()();
+  TextColumn get note => text().nullable()();
+}

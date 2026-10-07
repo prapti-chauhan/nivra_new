@@ -54,7 +54,8 @@ class ProfitReportScreen extends ConsumerWidget {
                 const SizedBox(height: 6),
                 Text(
                   'Cost is what you last paid for each item when it was sold. '
-                  'Expenses are not taken off — this is profit on goods only.',
+                  'Expenses are not taken off here — this is profit on goods '
+                  'only. See Profit and loss for what is left after them.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

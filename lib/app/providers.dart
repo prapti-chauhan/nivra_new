@@ -9,6 +9,7 @@ import '../data/pdf/invoice_fonts_flutter.dart';
 import '../data/pdf/invoice_from_rows.dart';
 import '../data/pdf/invoice_pdf.dart';
 import '../data/reports/report_queries.dart';
+import '../domain/cashbook.dart';
 import '../domain/invoice.dart';
 import '../domain/reports.dart';
 import '../data/remote/supabase_config.dart';
@@ -308,6 +309,53 @@ final billProfitsProvider = StreamProvider<List<BillProfit>>((ref) {
 
 final profitSummaryProvider = Provider<ProfitSummary>(
   (ref) => summarise(ref.watch(billProfitsProvider).value ?? const []),
+);
+
+final moneyDaoProvider = Provider<MoneyDao>(
+  (ref) => MoneyDao(ref.watch(databaseProvider)),
+);
+
+/// Expenses, other income and transfers in the chosen period. Shares the
+/// period with sales and profit so the P&L cannot mix two different spans.
+final moneyEntriesProvider = StreamProvider<List<MoneyEntry>>((ref) {
+  final period = ref.watch(reportPeriodProvider);
+  final range = rangeFor(period, _now(ref));
+  return ref.watch(reportQueriesProvider).watchMoneyEntries(range);
+});
+
+int _sumOf(List<MoneyEntry> entries, MoneyKind kind) => entries
+    .where((e) => e.kind == kind.wire)
+    .fold<int>(0, (sum, e) => sum + e.amount);
+
+/// Sales, cost of goods, other income and expenses for the period. Transfers
+/// are in neither side: moving money between cash and bank is not earning or
+/// spending it.
+final profitAndLossProvider = Provider<ProfitAndLoss>((ref) {
+  final goods = ref.watch(profitSummaryProvider);
+  final entries = ref.watch(moneyEntriesProvider).value ?? const <MoneyEntry>[];
+  return ProfitAndLoss(
+    salesPaise: goods.salesPaise,
+    costOfGoodsPaise: goods.costPaise,
+    otherIncomePaise: _sumOf(entries, MoneyKind.income),
+    expensesPaise: _sumOf(entries, MoneyKind.expense),
+  );
+});
+
+final cashPositionProvider = StreamProvider<CashPosition>(
+  (ref) => ref.watch(moneyDaoProvider).watchCashPosition(),
+);
+
+final cashLedgerProvider = StreamProvider.family<List<LedgerEntry>, MoneyMethod>(
+  (ref, method) => ref.watch(moneyDaoProvider).watchAccountLedger(method),
+);
+
+final moneyEntryProvider = StreamProvider.family<MoneyEntry?, String>(
+  (ref, id) => ref.watch(moneyDaoProvider).watchEntry(id),
+);
+
+final recentCategoriesProvider =
+    StreamProvider.family<List<String>, MoneyKind>(
+  (ref, kind) => ref.watch(moneyDaoProvider).watchRecentCategories(kind),
 );
 
 final owedToYouProvider = StreamProvider<List<Customer>>(
