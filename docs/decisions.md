@@ -523,3 +523,46 @@ test now sets a prefix, as a real shop would.
 - Per-line cost correction, for the price-swing weakness in D18.
 - A custom date range.
 
+---
+
+## Slice four, verified against the live project
+
+The slice-four sections above record the remote half as unverified. That is
+closed: `schema_v3.sql` was applied and the integration test now covers it.
+Both earlier "not verified" notes were true when written; this supersedes them.
+
+`test/integration/supabase_sync_test.dart` drives the real `SyncService` through
+the real `SupabaseSyncApi`, with a second empty database standing in for a fresh
+install:
+
+- Device one creates a supplier with Rs 1,000 already owed, buys 50 at Rs 18 on
+  credit with Rs 300 paid at the counter, and later pays Rs 200 against nothing in
+  particular. It pushes with nothing left pending.
+- Device two starts empty, pulls, and arrives at a payable of Rs 1,400, `amount_paid`
+  of Rs 300, stock of 60, and the new cost of Rs 18 on the item. **None of the first
+  three crossed the wire**; each was rebuilt locally from the rows that define it.
+- Cash paid out is Rs 500 on device two, matching device one and the server.
+- Device one then deletes the purchase. Device two ends with stock back at 10, the
+  payable back to Rs 800 (the Rs 1,000 opening less the Rs 200 standalone payment),
+  and the Rs 300 paid against the purchase returned to the till.
+- **Isolation:** an anonymous caller reads nothing from `suppliers`, `purchases` or
+  `purchase_lines`; a second signed-in user sees none of the first user's rows,
+  cannot insert a supplier in the first user's name, and cannot edit one (the name is
+  unchanged afterwards); and the same user can still write their own, so the
+  refusals are about ownership and not a table that rejects everything.
+
+**A wrong diagnosis worth remembering.** The first full run failed on the cash
+assertion: the fresh device summed cash to 0 instead of -50000, which looked like
+money leaving the till and not arriving after a sync. It was not. Every test in the
+file shares one signed-up user, and the bill test earlier in the same run had put
+Rs 500 *into* the same till, so an unscoped cash sum netted to zero. Run alone, the
+purchase test passed, and a ledger breakdown showed device one, device two and the
+server in exact agreement. The assertion is now scoped to payments out
+(`payment_out` and `payment_out_reversal`). No application code changed.
+
+**Side effect on the live project.** Each run signs up throwaway users named
+`nivra-it-<timestamp>@example.com` and `nivra-it-other-<timestamp>@example.com`,
+and leaves their rows behind, because the client cannot delete auth users. Five were
+created while verifying this slice. They are harmless, and removing them is a
+dashboard job.
+

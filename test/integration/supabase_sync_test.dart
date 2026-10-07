@@ -279,4 +279,247 @@ void main() {
     await one.close();
     await two.close();
   }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('a credit purchase, its payments and a delete rebuild on a fresh install',
+      () async {
+    // --- device one ------------------------------------------------------
+    final one = AppDatabase.forTesting(NativeDatabase.memory());
+    final invOne = InventoryDao(one);
+    final buyOne = PurchaseDao(one);
+    final syncOne = SyncService(
+      db: one,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+
+    final itemId = await invOne.createItem(
+      userId: userId,
+      name: 'IT binding wire',
+      salePrice: 10300,
+      purchasePrice: 1000,
+      openingStock: 10000,
+    );
+    // Rs 1,000 already owed before the app existed.
+    final supplierId = await buyOne.createSupplier(
+      userId: userId,
+      name: 'IT Verma Traders',
+      phone: '9876500002',
+      openingPayable: 100000,
+    );
+    // 50 at Rs 18 is Rs 900, Rs 300 of it paid at the counter.
+    final purchaseId = await buyOne.savePurchase(
+      userId: userId,
+      supplierId: supplierId,
+      supplierName: 'IT Verma Traders',
+      supplierBillNo: 'IT-V-0042',
+      lines: [
+        PurchaseLineDraft(
+          itemId: itemId,
+          name: 'IT binding wire',
+          unit: 'kg',
+          qty: 50000,
+          unitCost: 1800,
+        ),
+      ],
+      amountPaid: 30000,
+    );
+    // And Rs 200 handed over later, against nothing in particular.
+    await buyOne.recordSupplierPayment(
+      userId: userId,
+      supplierId: supplierId,
+      amount: 20000,
+    );
+
+    // 1000 owed + 900 bought - 300 - 200 paid = Rs 1,400, stored negative.
+    expect((await buyOne.findSupplier(supplierId))!.balance, -140000);
+    expect((await invOne.findItem(itemId))!.stockQty, 60000);
+    expect((await buyOne.findPurchase(purchaseId))!.amountPaid, 30000);
+
+    await syncOne.start(userId);
+    await syncOne.syncNow();
+    expect(syncOne.currentStatus.phase, SyncPhase.synced,
+        reason: 'everything should have pushed: ${syncOne.currentStatus.message}');
+    expect(await SyncDao(one).pendingCount(), 0);
+
+    // --- device two: empty database --------------------------------------
+    final two = AppDatabase.forTesting(NativeDatabase.memory());
+    final invTwo = InventoryDao(two);
+    final buyTwo = PurchaseDao(two);
+    final syncTwo = SyncService(
+      db: two,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+    await syncTwo.start(userId);
+    await syncTwo.syncNow();
+
+    final supplier = await buyTwo.findSupplier(supplierId);
+    expect(supplier, isNotNull, reason: 'the supplier should have arrived');
+    expect(supplier!.name, 'IT Verma Traders');
+
+    final purchase = await buyTwo.findPurchase(purchaseId);
+    expect(purchase, isNotNull, reason: 'the purchase should have arrived');
+    expect(purchase!.total, 90000);
+    expect(purchase.supplierBillNo, 'IT-V-0042');
+
+    final lines = await buyTwo.purchaseLinesFor(purchaseId);
+    expect(lines, hasLength(1));
+    expect(lines.single.unitCost, 1800,
+        reason: 'what was paid travels so profit stays traceable');
+
+    // None of these four figures crossed the wire. Each was rebuilt here from
+    // the rows that define it.
+    expect(supplier.balance, -140000, reason: 'payable rebuilt from the ledger');
+    expect(await buyTwo.balanceFromLedger(supplierId), -140000);
+    expect(purchase.amountPaid, 30000,
+        reason: 'paid rebuilt from payments, sign flipped once');
+    expect((await invTwo.findItem(itemId))!.stockQty, 60000,
+        reason: 'stock rebuilt from movements');
+    expect((await invTwo.findItem(itemId))!.purchasePrice, 1800,
+        reason: 'the new cost is an ordinary edit and does travel');
+
+    // Scoped to payments OUT, because every test in this file shares one
+    // user and the bill test above left Rs 500 coming IN to the same till.
+    // An unscoped cash sum nets to zero and looks like lost money.
+    Future<int> cashPaidOut(AppDatabase d) async => (await d.customSelect(
+          "SELECT COALESCE(SUM(amount), 0) AS total FROM ledger_entries "
+          "WHERE account_type = 'cash' "
+          "AND reason IN ('payment_out', 'payment_out_reversal')",
+          readsFrom: {d.ledgerEntries},
+        ).getSingle())
+            .read<int>('total');
+
+    expect(await cashPaidOut(two), -50000,
+        reason: 'Rs 500 in all went out of the till');
+
+    // --- a delete on device one reaches device two ----------------------
+    await buyOne.deletePurchase(userId: userId, purchaseId: purchaseId);
+    await syncOne.syncNow();
+    await syncTwo.syncNow();
+
+    expect((await buyTwo.findPurchase(purchaseId))!.deletedAt, isNotNull);
+    expect((await invTwo.findItem(itemId))!.stockQty, 10000,
+        reason: 'the reversal put the stock back on device two');
+    // Back to the Rs 1,000 opening less the Rs 200 standalone payment.
+    expect((await buyTwo.findSupplier(supplierId))!.balance, -80000);
+
+    expect(await cashPaidOut(two), -20000,
+        reason: 'the Rs 300 paid against the deleted purchase came back');
+
+    await syncOne.stop();
+    await syncTwo.stop();
+    await one.close();
+    await two.close();
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('nobody else can read or forge suppliers, purchases or their lines',
+      () async {
+    const tables = ['suppliers', 'purchases', 'purchase_lines'];
+
+    // Make sure there is something there to be refused.
+    final one = AppDatabase.forTesting(NativeDatabase.memory());
+    final buyOne = PurchaseDao(one);
+    final syncOne = SyncService(
+      db: one,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+    final itemId = await InventoryDao(one).createItem(
+      userId: userId,
+      name: 'IT rls item',
+      salePrice: 1000,
+      purchasePrice: 500,
+    );
+    final supplierId =
+        await buyOne.createSupplier(userId: userId, name: 'IT rls supplier');
+    await buyOne.savePurchase(
+      userId: userId,
+      supplierId: supplierId,
+      lines: [
+        PurchaseLineDraft(
+          itemId: itemId,
+          name: 'IT rls item',
+          unit: 'pcs',
+          qty: 1000,
+          unitCost: 500,
+        ),
+      ],
+    );
+    await syncOne.start(userId);
+    await syncOne.syncNow();
+    await syncOne.stop();
+    await one.close();
+
+    final owner = await client.from('suppliers').select('id').eq('id', supplierId);
+    expect(owner, hasLength(1), reason: 'the owner can see their own supplier');
+
+    // An anonymous caller, with the publishable key and no session.
+    final anon = SupabaseClient(
+      SupabaseConfig.url,
+      SupabaseConfig.publishableKey,
+      authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    );
+    for (final table in tables) {
+      expect(await anon.from(table).select('id'), isEmpty,
+          reason: 'anonymous read of $table should return nothing');
+    }
+    await anon.dispose();
+
+    // A second signed-in user.
+    final other = SupabaseClient(
+      SupabaseConfig.url,
+      SupabaseConfig.publishableKey,
+      authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    );
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final res = await other.auth.signUp(
+      email: 'nivra-it-other-$stamp@example.com',
+      password: 'integration-pass-123',
+    );
+    expect(res.session, isNotNull);
+    final otherId = res.user!.id;
+
+    for (final table in tables) {
+      expect(await other.from(table).select('id'), isEmpty,
+          reason: 'a second user should see none of the first user\'s $table');
+    }
+
+    // Cannot plant a row in someone else's name...
+    await expectLater(
+      other.from('suppliers').insert({
+        'id': 'it-forged-${DateTime.now().microsecondsSinceEpoch}',
+        'user_id': userId,
+        'created_at': 1,
+        'updated_at': 1,
+        'name': 'forged',
+      }),
+      throwsA(isA<PostgrestException>()),
+    );
+
+    // ...and cannot edit one that is not theirs. An update that RLS hides
+    // matches zero rows rather than erroring, so the proof is that the name
+    // is unchanged afterwards.
+    await other
+        .from('suppliers')
+        .update({'name': 'hijacked'}).eq('id', supplierId);
+    final after =
+        await client.from('suppliers').select('name').eq('id', supplierId);
+    expect(after.single['name'], 'IT rls supplier');
+
+    // Their own rows still work, so the refusals above are about ownership
+    // and not a table that rejects everything.
+    final mine = 'it-own-${DateTime.now().microsecondsSinceEpoch}';
+    await other.from('suppliers').insert({
+      'id': mine,
+      'user_id': otherId,
+      'created_at': 1,
+      'updated_at': 1,
+      'name': 'their own supplier',
+    });
+    expect(await other.from('suppliers').select('id').eq('id', mine), hasLength(1));
+
+    await other.auth.signOut();
+    await other.dispose();
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }
+
