@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/scroll_behavior.dart';
 import '../core/theme.dart';
 import '../features/auth/auth_repository.dart';
 import 'providers.dart';
@@ -62,6 +63,7 @@ class _NivraAppState extends ConsumerState<NivraApp> {
       debugShowCheckedModeBanner: false,
       theme: NivraTheme.light(),
       darkTheme: NivraTheme.dark(),
+      scrollBehavior: const NoGlowScrollBehavior(),
       routerConfig: router,
     );
   }
