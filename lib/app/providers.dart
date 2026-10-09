@@ -338,12 +338,37 @@ DateTime _now(Ref ref) => DateTime.fromMillisecondsSinceEpoch(
       ref.read(databaseProvider).clock.nowMillis(),
     );
 
+/// The shop's current calendar day, at local midnight.
+///
+/// Report periods like "Today" are measured from this. It is state rather than
+/// something read when a report is built because a shop that never closes the
+/// app would otherwise keep showing yesterday under "Today" until the next
+/// restart. `DayWatcher` (in the app shell) calls [CurrentDay.refresh] at
+/// midnight and when the app comes back to the foreground; everything that
+/// measures a period watches this and so recomputes by itself.
+final currentDayProvider =
+    NotifierProvider<CurrentDay, DateTime>(CurrentDay.new);
+
+class CurrentDay extends Notifier<DateTime> {
+  @override
+  DateTime build() => _dayOf(_now(ref));
+
+  /// Re-reads the clock. Changes state only when the day has actually changed,
+  /// so coming back to the app at lunchtime rebuilds nothing.
+  void refresh() {
+    final day = _dayOf(_now(ref));
+    if (day != state) state = day;
+  }
+}
+
+DateTime _dayOf(DateTime t) => DateTime(t.year, t.month, t.day);
+
 /// Every live bill in the chosen period, with its lines. The sales screen and
 /// the profit screen are two views of this one list, which is what guarantees
 /// they cannot disagree.
 final billProfitsProvider = StreamProvider<List<BillProfit>>((ref) {
   final span = ref.watch(reportPeriodProvider);
-  final range = span.rangeAt(_now(ref));
+  final range = span.rangeAt(ref.watch(currentDayProvider));
   return ref.watch(reportQueriesProvider).watchBillProfits(range);
 });
 
@@ -359,7 +384,7 @@ final moneyDaoProvider = Provider<MoneyDao>(
 /// period with sales and profit so the P&L cannot mix two different spans.
 final moneyEntriesProvider = StreamProvider<List<MoneyEntry>>((ref) {
   final span = ref.watch(reportPeriodProvider);
-  final range = span.rangeAt(_now(ref));
+  final range = span.rangeAt(ref.watch(currentDayProvider));
   return ref.watch(reportQueriesProvider).watchMoneyEntries(range);
 });
 

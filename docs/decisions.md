@@ -1029,3 +1029,42 @@ screen with a fake picker.
   orientation tag could rotate the logo, and could not check either way without a
   device. The shop's address is already on the bill, so the exposure is small;
   worth a look on a real photo.
+
+---
+
+# Slice twelve — "Today" no longer goes stale past midnight
+
+A shop that never closes the app crosses midnight with it open. The report
+providers measured "Today" from the clock at the moment they were built, so
+they went on showing yesterday until the app restarted.
+
+## Decided while building
+
+- **The current day is state, `currentDayProvider`**, and every provider that
+  turns a period into a range (sales and profit, expenses and income, so the P&L
+  too) watches it. When it changes they recompute by themselves. It still comes
+  from the database's clock, never `DateTime.now()`, so tests pin it.
+- **A `DayWatcher` widget in the app shell moves it on**: a timer armed for the
+  next local midnight (plus a second), and a re-check whenever the app returns
+  to the foreground. The foreground check matters as much as the timer: a
+  sleeping phone runs no timers, so midnight can pass while the app is away.
+  Both only change the day if it has actually changed, so resuming at lunchtime
+  rebuilds nothing.
+- **A widget, not a provider, owns the timer.** A provider-owned timer would
+  outlive the widget tree and trip the "a timer is still pending" check in every
+  widget test that reads a report; the widget's timer ends with the widget.
+- Custom ranges do not move (he asked for the 7th, and the 7th has not changed);
+  "This week" and "This month" follow the calendar across a week or month end.
+- **Not changed:** `reorderProvider` ("how fast is this selling", a 30-day
+  window) still measures from when it is built. Being a few hours out on a
+  30-day window is not worth a rebuild of that list at midnight.
+
+## Verified, not asserted
+
+Five tests. Crossing midnight with the app open moves "Today" on without any
+action; returning to the app after the clock has jumped (a night asleep) brings
+it up to date; a custom range does not move; "This month" rolls over at a month
+end; and refreshing mid-day changes nothing. To check they can fail: with the
+watcher's refresh calls removed, the three tests that depend on them fail.
+`flutter analyze` clean; 348 offline tests pass. No schema change. Not run on a
+device, and not observed across a real midnight.
