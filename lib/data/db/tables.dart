@@ -359,6 +359,31 @@ class Purchases extends Table with SyncedRow {
 
   IntColumn get occurredAt => integer()();
   TextColumn get note => text().nullable()();
+
+  /// 0 on first save, incremented by each edit. Non-zero means the purchase
+  /// shows an "Edited" mark and has earlier versions in purchase_revisions.
+  IntColumn get revision => integer().withDefault(const Constant(0))();
+}
+
+/// One row per superseded version of a purchase.
+///
+/// Slice four corrected a purchase by deleting it and entering it again, on the
+/// grounds that nobody disputes an internal record. Editing in place changes
+/// that: the figures that were true yesterday are overwritten, so what they
+/// were has to be kept somewhere. Same shape as [BillRevisions].
+@TableIndex(name: 'idx_purchase_revisions_purchase', columns: {#purchaseId})
+@TableIndex(name: 'idx_purchase_revisions_dirty', columns: {#isDirty})
+class PurchaseRevisions extends Table with SyncedRow {
+  TextColumn get purchaseId => text().references(Purchases, #id)();
+
+  /// The revision number this snapshot replaced.
+  IntColumn get revision => integer()();
+
+  /// JSON of the purchase and its lines as they stood. An archive, never
+  /// queried field by field.
+  TextColumn get snapshot => text()();
+
+  IntColumn get replacedAt => integer()();
 }
 
 @TableIndex(name: 'idx_purchase_lines_purchase', columns: {#purchaseId})

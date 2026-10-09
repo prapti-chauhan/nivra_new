@@ -8269,6 +8269,18 @@ class $PurchasesTable extends Purchases
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -8289,6 +8301,7 @@ class $PurchasesTable extends Purchases
     amountPaid,
     occurredAt,
     note,
+    revision,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -8437,6 +8450,12 @@ class $PurchasesTable extends Purchases
         note.isAcceptableOrUnknown(data['note']!, _noteMeta),
       );
     }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
     return context;
   }
 
@@ -8518,6 +8537,10 @@ class $PurchasesTable extends Purchases
         DriftSqlType.string,
         data['${effectivePrefix}note'],
       ),
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
     );
   }
 
@@ -8556,6 +8579,10 @@ class Purchase extends DataClass implements Insertable<Purchase> {
   final int amountPaid;
   final int occurredAt;
   final String? note;
+
+  /// 0 on first save, incremented by each edit. Non-zero means the purchase
+  /// shows an "Edited" mark and has earlier versions in purchase_revisions.
+  final int revision;
   const Purchase({
     required this.id,
     required this.userId,
@@ -8575,6 +8602,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
     required this.amountPaid,
     required this.occurredAt,
     this.note,
+    required this.revision,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -8607,6 +8635,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
+    map['revision'] = Variable<int>(revision);
     return map;
   }
 
@@ -8638,6 +8667,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
       amountPaid: Value(amountPaid),
       occurredAt: Value(occurredAt),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      revision: Value(revision),
     );
   }
 
@@ -8665,6 +8695,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
       amountPaid: serializer.fromJson<int>(json['amountPaid']),
       occurredAt: serializer.fromJson<int>(json['occurredAt']),
       note: serializer.fromJson<String?>(json['note']),
+      revision: serializer.fromJson<int>(json['revision']),
     );
   }
   @override
@@ -8689,6 +8720,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
       'amountPaid': serializer.toJson<int>(amountPaid),
       'occurredAt': serializer.toJson<int>(occurredAt),
       'note': serializer.toJson<String?>(note),
+      'revision': serializer.toJson<int>(revision),
     };
   }
 
@@ -8711,6 +8743,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
     int? amountPaid,
     int? occurredAt,
     Value<String?> note = const Value.absent(),
+    int? revision,
   }) => Purchase(
     id: id ?? this.id,
     userId: userId ?? this.userId,
@@ -8734,6 +8767,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
     amountPaid: amountPaid ?? this.amountPaid,
     occurredAt: occurredAt ?? this.occurredAt,
     note: note.present ? note.value : this.note,
+    revision: revision ?? this.revision,
   );
   Purchase copyWithCompanion(PurchasesCompanion data) {
     return Purchase(
@@ -8773,6 +8807,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
           ? data.occurredAt.value
           : this.occurredAt,
       note: data.note.present ? data.note.value : this.note,
+      revision: data.revision.present ? data.revision.value : this.revision,
     );
   }
 
@@ -8796,7 +8831,8 @@ class Purchase extends DataClass implements Insertable<Purchase> {
           ..write('total: $total, ')
           ..write('amountPaid: $amountPaid, ')
           ..write('occurredAt: $occurredAt, ')
-          ..write('note: $note')
+          ..write('note: $note, ')
+          ..write('revision: $revision')
           ..write(')'))
         .toString();
   }
@@ -8821,6 +8857,7 @@ class Purchase extends DataClass implements Insertable<Purchase> {
     amountPaid,
     occurredAt,
     note,
+    revision,
   );
   @override
   bool operator ==(Object other) =>
@@ -8843,7 +8880,8 @@ class Purchase extends DataClass implements Insertable<Purchase> {
           other.total == this.total &&
           other.amountPaid == this.amountPaid &&
           other.occurredAt == this.occurredAt &&
-          other.note == this.note);
+          other.note == this.note &&
+          other.revision == this.revision);
 }
 
 class PurchasesCompanion extends UpdateCompanion<Purchase> {
@@ -8865,6 +8903,7 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
   final Value<int> amountPaid;
   final Value<int> occurredAt;
   final Value<String?> note;
+  final Value<int> revision;
   final Value<int> rowid;
   const PurchasesCompanion({
     this.id = const Value.absent(),
@@ -8885,6 +8924,7 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
     this.amountPaid = const Value.absent(),
     this.occurredAt = const Value.absent(),
     this.note = const Value.absent(),
+    this.revision = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PurchasesCompanion.insert({
@@ -8906,6 +8946,7 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
     this.amountPaid = const Value.absent(),
     required int occurredAt,
     this.note = const Value.absent(),
+    this.revision = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        userId = Value(userId),
@@ -8932,6 +8973,7 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
     Expression<int>? amountPaid,
     Expression<int>? occurredAt,
     Expression<String>? note,
+    Expression<int>? revision,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -8953,6 +8995,7 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
       if (amountPaid != null) 'amount_paid': amountPaid,
       if (occurredAt != null) 'occurred_at': occurredAt,
       if (note != null) 'note': note,
+      if (revision != null) 'revision': revision,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -8976,6 +9019,7 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
     Value<int>? amountPaid,
     Value<int>? occurredAt,
     Value<String?>? note,
+    Value<int>? revision,
     Value<int>? rowid,
   }) {
     return PurchasesCompanion(
@@ -8997,6 +9041,7 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
       amountPaid: amountPaid ?? this.amountPaid,
       occurredAt: occurredAt ?? this.occurredAt,
       note: note ?? this.note,
+      revision: revision ?? this.revision,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -9058,6 +9103,9 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -9085,6 +9133,7 @@ class PurchasesCompanion extends UpdateCompanion<Purchase> {
           ..write('amountPaid: $amountPaid, ')
           ..write('occurredAt: $occurredAt, ')
           ..write('note: $note, ')
+          ..write('revision: $revision, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -10880,6 +10929,686 @@ class PurchaseLinesCompanion extends UpdateCompanion<PurchaseLine> {
   }
 }
 
+class $PurchaseRevisionsTable extends PurchaseRevisions
+    with TableInfo<$PurchaseRevisionsTable, PurchaseRevision> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PurchaseRevisionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+    'user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<int> deletedAt = GeneratedColumn<int>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _serverUpdatedAtMeta = const VerificationMeta(
+    'serverUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> serverUpdatedAt = GeneratedColumn<int>(
+    'server_updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDirtyMeta = const VerificationMeta(
+    'isDirty',
+  );
+  @override
+  late final GeneratedColumn<bool> isDirty = GeneratedColumn<bool>(
+    'is_dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _purchaseIdMeta = const VerificationMeta(
+    'purchaseId',
+  );
+  @override
+  late final GeneratedColumn<String> purchaseId = GeneratedColumn<String>(
+    'purchase_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES purchases (id)',
+    ),
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _snapshotMeta = const VerificationMeta(
+    'snapshot',
+  );
+  @override
+  late final GeneratedColumn<String> snapshot = GeneratedColumn<String>(
+    'snapshot',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _replacedAtMeta = const VerificationMeta(
+    'replacedAt',
+  );
+  @override
+  late final GeneratedColumn<int> replacedAt = GeneratedColumn<int>(
+    'replaced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    userId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    serverUpdatedAt,
+    isDirty,
+    purchaseId,
+    revision,
+    snapshot,
+    replacedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'purchase_revisions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PurchaseRevision> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(
+        _userIdMeta,
+        userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('server_updated_at')) {
+      context.handle(
+        _serverUpdatedAtMeta,
+        serverUpdatedAt.isAcceptableOrUnknown(
+          data['server_updated_at']!,
+          _serverUpdatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_dirty')) {
+      context.handle(
+        _isDirtyMeta,
+        isDirty.isAcceptableOrUnknown(data['is_dirty']!, _isDirtyMeta),
+      );
+    }
+    if (data.containsKey('purchase_id')) {
+      context.handle(
+        _purchaseIdMeta,
+        purchaseId.isAcceptableOrUnknown(data['purchase_id']!, _purchaseIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_purchaseIdMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_revisionMeta);
+    }
+    if (data.containsKey('snapshot')) {
+      context.handle(
+        _snapshotMeta,
+        snapshot.isAcceptableOrUnknown(data['snapshot']!, _snapshotMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_snapshotMeta);
+    }
+    if (data.containsKey('replaced_at')) {
+      context.handle(
+        _replacedAtMeta,
+        replacedAt.isAcceptableOrUnknown(data['replaced_at']!, _replacedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_replacedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PurchaseRevision map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PurchaseRevision(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      userId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      serverUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_updated_at'],
+      ),
+      isDirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_dirty'],
+      )!,
+      purchaseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}purchase_id'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      snapshot: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}snapshot'],
+      )!,
+      replacedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}replaced_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PurchaseRevisionsTable createAlias(String alias) {
+    return $PurchaseRevisionsTable(attachedDatabase, alias);
+  }
+}
+
+class PurchaseRevision extends DataClass
+    implements Insertable<PurchaseRevision> {
+  final String id;
+  final String userId;
+  final int createdAt;
+  final int updatedAt;
+
+  /// Set instead of deleting. A hard delete made offline would simply vanish
+  /// and be resurrected by the next pull.
+  final int? deletedAt;
+  final int? serverUpdatedAt;
+  final bool isDirty;
+  final String purchaseId;
+
+  /// The revision number this snapshot replaced.
+  final int revision;
+
+  /// JSON of the purchase and its lines as they stood. An archive, never
+  /// queried field by field.
+  final String snapshot;
+  final int replacedAt;
+  const PurchaseRevision({
+    required this.id,
+    required this.userId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    this.serverUpdatedAt,
+    required this.isDirty,
+    required this.purchaseId,
+    required this.revision,
+    required this.snapshot,
+    required this.replacedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<int>(deletedAt);
+    }
+    if (!nullToAbsent || serverUpdatedAt != null) {
+      map['server_updated_at'] = Variable<int>(serverUpdatedAt);
+    }
+    map['is_dirty'] = Variable<bool>(isDirty);
+    map['purchase_id'] = Variable<String>(purchaseId);
+    map['revision'] = Variable<int>(revision);
+    map['snapshot'] = Variable<String>(snapshot);
+    map['replaced_at'] = Variable<int>(replacedAt);
+    return map;
+  }
+
+  PurchaseRevisionsCompanion toCompanion(bool nullToAbsent) {
+    return PurchaseRevisionsCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      serverUpdatedAt: serverUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverUpdatedAt),
+      isDirty: Value(isDirty),
+      purchaseId: Value(purchaseId),
+      revision: Value(revision),
+      snapshot: Value(snapshot),
+      replacedAt: Value(replacedAt),
+    );
+  }
+
+  factory PurchaseRevision.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PurchaseRevision(
+      id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      deletedAt: serializer.fromJson<int?>(json['deletedAt']),
+      serverUpdatedAt: serializer.fromJson<int?>(json['serverUpdatedAt']),
+      isDirty: serializer.fromJson<bool>(json['isDirty']),
+      purchaseId: serializer.fromJson<String>(json['purchaseId']),
+      revision: serializer.fromJson<int>(json['revision']),
+      snapshot: serializer.fromJson<String>(json['snapshot']),
+      replacedAt: serializer.fromJson<int>(json['replacedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String>(userId),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'deletedAt': serializer.toJson<int?>(deletedAt),
+      'serverUpdatedAt': serializer.toJson<int?>(serverUpdatedAt),
+      'isDirty': serializer.toJson<bool>(isDirty),
+      'purchaseId': serializer.toJson<String>(purchaseId),
+      'revision': serializer.toJson<int>(revision),
+      'snapshot': serializer.toJson<String>(snapshot),
+      'replacedAt': serializer.toJson<int>(replacedAt),
+    };
+  }
+
+  PurchaseRevision copyWith({
+    String? id,
+    String? userId,
+    int? createdAt,
+    int? updatedAt,
+    Value<int?> deletedAt = const Value.absent(),
+    Value<int?> serverUpdatedAt = const Value.absent(),
+    bool? isDirty,
+    String? purchaseId,
+    int? revision,
+    String? snapshot,
+    int? replacedAt,
+  }) => PurchaseRevision(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    serverUpdatedAt: serverUpdatedAt.present
+        ? serverUpdatedAt.value
+        : this.serverUpdatedAt,
+    isDirty: isDirty ?? this.isDirty,
+    purchaseId: purchaseId ?? this.purchaseId,
+    revision: revision ?? this.revision,
+    snapshot: snapshot ?? this.snapshot,
+    replacedAt: replacedAt ?? this.replacedAt,
+  );
+  PurchaseRevision copyWithCompanion(PurchaseRevisionsCompanion data) {
+    return PurchaseRevision(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      serverUpdatedAt: data.serverUpdatedAt.present
+          ? data.serverUpdatedAt.value
+          : this.serverUpdatedAt,
+      isDirty: data.isDirty.present ? data.isDirty.value : this.isDirty,
+      purchaseId: data.purchaseId.present
+          ? data.purchaseId.value
+          : this.purchaseId,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      snapshot: data.snapshot.present ? data.snapshot.value : this.snapshot,
+      replacedAt: data.replacedAt.present
+          ? data.replacedAt.value
+          : this.replacedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PurchaseRevision(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('isDirty: $isDirty, ')
+          ..write('purchaseId: $purchaseId, ')
+          ..write('revision: $revision, ')
+          ..write('snapshot: $snapshot, ')
+          ..write('replacedAt: $replacedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    userId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    serverUpdatedAt,
+    isDirty,
+    purchaseId,
+    revision,
+    snapshot,
+    replacedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PurchaseRevision &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.serverUpdatedAt == this.serverUpdatedAt &&
+          other.isDirty == this.isDirty &&
+          other.purchaseId == this.purchaseId &&
+          other.revision == this.revision &&
+          other.snapshot == this.snapshot &&
+          other.replacedAt == this.replacedAt);
+}
+
+class PurchaseRevisionsCompanion extends UpdateCompanion<PurchaseRevision> {
+  final Value<String> id;
+  final Value<String> userId;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int?> deletedAt;
+  final Value<int?> serverUpdatedAt;
+  final Value<bool> isDirty;
+  final Value<String> purchaseId;
+  final Value<int> revision;
+  final Value<String> snapshot;
+  final Value<int> replacedAt;
+  final Value<int> rowid;
+  const PurchaseRevisionsCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    this.isDirty = const Value.absent(),
+    this.purchaseId = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.snapshot = const Value.absent(),
+    this.replacedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  PurchaseRevisionsCompanion.insert({
+    required String id,
+    required String userId,
+    required int createdAt,
+    required int updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+    this.isDirty = const Value.absent(),
+    required String purchaseId,
+    required int revision,
+    required String snapshot,
+    required int replacedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       userId = Value(userId),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt),
+       purchaseId = Value(purchaseId),
+       revision = Value(revision),
+       snapshot = Value(snapshot),
+       replacedAt = Value(replacedAt);
+  static Insertable<PurchaseRevision> custom({
+    Expression<String>? id,
+    Expression<String>? userId,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? deletedAt,
+    Expression<int>? serverUpdatedAt,
+    Expression<bool>? isDirty,
+    Expression<String>? purchaseId,
+    Expression<int>? revision,
+    Expression<String>? snapshot,
+    Expression<int>? replacedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
+      if (isDirty != null) 'is_dirty': isDirty,
+      if (purchaseId != null) 'purchase_id': purchaseId,
+      if (revision != null) 'revision': revision,
+      if (snapshot != null) 'snapshot': snapshot,
+      if (replacedAt != null) 'replaced_at': replacedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  PurchaseRevisionsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? userId,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int?>? deletedAt,
+    Value<int?>? serverUpdatedAt,
+    Value<bool>? isDirty,
+    Value<String>? purchaseId,
+    Value<int>? revision,
+    Value<String>? snapshot,
+    Value<int>? replacedAt,
+    Value<int>? rowid,
+  }) {
+    return PurchaseRevisionsCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
+      isDirty: isDirty ?? this.isDirty,
+      purchaseId: purchaseId ?? this.purchaseId,
+      revision: revision ?? this.revision,
+      snapshot: snapshot ?? this.snapshot,
+      replacedAt: replacedAt ?? this.replacedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<int>(deletedAt.value);
+    }
+    if (serverUpdatedAt.present) {
+      map['server_updated_at'] = Variable<int>(serverUpdatedAt.value);
+    }
+    if (isDirty.present) {
+      map['is_dirty'] = Variable<bool>(isDirty.value);
+    }
+    if (purchaseId.present) {
+      map['purchase_id'] = Variable<String>(purchaseId.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (snapshot.present) {
+      map['snapshot'] = Variable<String>(snapshot.value);
+    }
+    if (replacedAt.present) {
+      map['replaced_at'] = Variable<int>(replacedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PurchaseRevisionsCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
+          ..write('isDirty: $isDirty, ')
+          ..write('purchaseId: $purchaseId, ')
+          ..write('revision: $revision, ')
+          ..write('snapshot: $snapshot, ')
+          ..write('replacedAt: $replacedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $MoneyEntriesTable extends MoneyEntries
     with TableInfo<$MoneyEntriesTable, MoneyEntry> {
   @override
@@ -12471,6 +13200,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PurchasesTable purchases = $PurchasesTable(this);
   late final $PaymentsTable payments = $PaymentsTable(this);
   late final $PurchaseLinesTable purchaseLines = $PurchaseLinesTable(this);
+  late final $PurchaseRevisionsTable purchaseRevisions =
+      $PurchaseRevisionsTable(this);
   late final $MoneyEntriesTable moneyEntries = $MoneyEntriesTable(this);
   late final $SyncStatesTable syncStates = $SyncStatesTable(this);
   late final $SyncLogsTable syncLogs = $SyncLogsTable(this);
@@ -12590,6 +13321,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'idx_purchase_lines_dirty',
     'CREATE INDEX idx_purchase_lines_dirty ON purchase_lines (is_dirty)',
   );
+  late final Index idxPurchaseRevisionsPurchase = Index(
+    'idx_purchase_revisions_purchase',
+    'CREATE INDEX idx_purchase_revisions_purchase ON purchase_revisions (purchase_id)',
+  );
+  late final Index idxPurchaseRevisionsDirty = Index(
+    'idx_purchase_revisions_dirty',
+    'CREATE INDEX idx_purchase_revisions_dirty ON purchase_revisions (is_dirty)',
+  );
   late final Index idxMoneyEntriesOccurred = Index(
     'idx_money_entries_occurred',
     'CREATE INDEX idx_money_entries_occurred ON money_entries (occurred_at)',
@@ -12621,6 +13360,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     purchases,
     payments,
     purchaseLines,
+    purchaseRevisions,
     moneyEntries,
     syncStates,
     syncLogs,
@@ -12653,6 +13393,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     idxPurchaseLinesPurchase,
     idxPurchaseLinesItem,
     idxPurchaseLinesDirty,
+    idxPurchaseRevisionsPurchase,
+    idxPurchaseRevisionsDirty,
     idxMoneyEntriesOccurred,
     idxMoneyEntriesDirty,
   ];
@@ -17868,6 +18610,7 @@ typedef $$PurchasesTableCreateCompanionBuilder =
       Value<int> amountPaid,
       required int occurredAt,
       Value<String?> note,
+      Value<int> revision,
       Value<int> rowid,
     });
 typedef $$PurchasesTableUpdateCompanionBuilder =
@@ -17890,6 +18633,7 @@ typedef $$PurchasesTableUpdateCompanionBuilder =
       Value<int> amountPaid,
       Value<int> occurredAt,
       Value<String?> note,
+      Value<int> revision,
       Value<int> rowid,
     });
 
@@ -17946,6 +18690,27 @@ final class $$PurchasesTableReferences
     ).filter((f) => f.purchaseId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_purchaseLinesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$PurchaseRevisionsTable, List<PurchaseRevision>>
+  _purchaseRevisionsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.purchaseRevisions,
+        aliasName: 'purchases__id__purchase_revisions__purchase_id',
+      );
+
+  $$PurchaseRevisionsTableProcessedTableManager get purchaseRevisionsRefs {
+    final manager = $$PurchaseRevisionsTableTableManager(
+      $_db,
+      $_db.purchaseRevisions,
+    ).filter((f) => f.purchaseId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _purchaseRevisionsRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -18046,6 +18811,11 @@ class $$PurchasesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SuppliersTableFilterComposer get supplierId {
     final $$SuppliersTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -18110,6 +18880,31 @@ class $$PurchasesTableFilterComposer
           }) => $$PurchaseLinesTableFilterComposer(
             $db: $db,
             $table: $db.purchaseLines,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> purchaseRevisionsRefs(
+    Expression<bool> Function($$PurchaseRevisionsTableFilterComposer f) f,
+  ) {
+    final $$PurchaseRevisionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.purchaseRevisions,
+      getReferencedColumn: (t) => t.purchaseId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PurchaseRevisionsTableFilterComposer(
+            $db: $db,
+            $table: $db.purchaseRevisions,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -18214,6 +19009,11 @@ class $$PurchasesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SuppliersTableOrderingComposer get supplierId {
     final $$SuppliersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -18314,6 +19114,9 @@ class $$PurchasesTableAnnotationComposer
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
 
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
   $$SuppliersTableAnnotationComposer get supplierId {
     final $$SuppliersTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -18386,6 +19189,32 @@ class $$PurchasesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> purchaseRevisionsRefs<T extends Object>(
+    Expression<T> Function($$PurchaseRevisionsTableAnnotationComposer a) f,
+  ) {
+    final $$PurchaseRevisionsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.purchaseRevisions,
+          getReferencedColumn: (t) => t.purchaseId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$PurchaseRevisionsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.purchaseRevisions,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$PurchasesTableTableManager
@@ -18405,6 +19234,7 @@ class $$PurchasesTableTableManager
             bool supplierId,
             bool paymentsRefs,
             bool purchaseLinesRefs,
+            bool purchaseRevisionsRefs,
           })
         > {
   $$PurchasesTableTableManager(_$AppDatabase db, $PurchasesTable table)
@@ -18438,6 +19268,7 @@ class $$PurchasesTableTableManager
                 Value<int> amountPaid = const Value.absent(),
                 Value<int> occurredAt = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<int> revision = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PurchasesCompanion(
                 id: id,
@@ -18458,6 +19289,7 @@ class $$PurchasesTableTableManager
                 amountPaid: amountPaid,
                 occurredAt: occurredAt,
                 note: note,
+                revision: revision,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -18480,6 +19312,7 @@ class $$PurchasesTableTableManager
                 Value<int> amountPaid = const Value.absent(),
                 required int occurredAt,
                 Value<String?> note = const Value.absent(),
+                Value<int> revision = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PurchasesCompanion.insert(
                 id: id,
@@ -18500,6 +19333,7 @@ class $$PurchasesTableTableManager
                 amountPaid: amountPaid,
                 occurredAt: occurredAt,
                 note: note,
+                revision: revision,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -18515,12 +19349,14 @@ class $$PurchasesTableTableManager
                 supplierId = false,
                 paymentsRefs = false,
                 purchaseLinesRefs = false,
+                purchaseRevisionsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (paymentsRefs) db.payments,
                     if (purchaseLinesRefs) db.purchaseLines,
+                    if (purchaseRevisionsRefs) db.purchaseRevisions,
                   ],
                   addJoins:
                       <
@@ -18598,6 +19434,27 @@ class $$PurchasesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (purchaseRevisionsRefs)
+                        await $_getPrefetchedData<
+                          Purchase,
+                          $PurchasesTable,
+                          PurchaseRevision
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PurchasesTableReferences
+                              ._purchaseRevisionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PurchasesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).purchaseRevisionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.purchaseId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -18622,6 +19479,7 @@ typedef $$PurchasesTableProcessedTableManager =
         bool supplierId,
         bool paymentsRefs,
         bool purchaseLinesRefs,
+        bool purchaseRevisionsRefs,
       })
     >;
 typedef $$PaymentsTableCreateCompanionBuilder =
@@ -20027,6 +20885,457 @@ typedef $$PurchaseLinesTableProcessedTableManager =
       PurchaseLine,
       PrefetchHooks Function({bool purchaseId, bool itemId})
     >;
+typedef $$PurchaseRevisionsTableCreateCompanionBuilder =
+    PurchaseRevisionsCompanion Function({
+      required String id,
+      required String userId,
+      required int createdAt,
+      required int updatedAt,
+      Value<int?> deletedAt,
+      Value<int?> serverUpdatedAt,
+      Value<bool> isDirty,
+      required String purchaseId,
+      required int revision,
+      required String snapshot,
+      required int replacedAt,
+      Value<int> rowid,
+    });
+typedef $$PurchaseRevisionsTableUpdateCompanionBuilder =
+    PurchaseRevisionsCompanion Function({
+      Value<String> id,
+      Value<String> userId,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int?> deletedAt,
+      Value<int?> serverUpdatedAt,
+      Value<bool> isDirty,
+      Value<String> purchaseId,
+      Value<int> revision,
+      Value<String> snapshot,
+      Value<int> replacedAt,
+      Value<int> rowid,
+    });
+
+final class $$PurchaseRevisionsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $PurchaseRevisionsTable,
+          PurchaseRevision
+        > {
+  $$PurchaseRevisionsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $PurchasesTable _purchaseIdTable(_$AppDatabase db) => db.purchases
+      .createAlias('purchase_revisions__purchase_id__purchases__id');
+
+  $$PurchasesTableProcessedTableManager get purchaseId {
+    final $_column = $_itemColumn<String>('purchase_id')!;
+
+    final manager = $$PurchasesTableTableManager(
+      $_db,
+      $_db.purchases,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_purchaseIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PurchaseRevisionsTableFilterComposer
+    extends Composer<_$AppDatabase, $PurchaseRevisionsTable> {
+  $$PurchaseRevisionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDirty => $composableBuilder(
+    column: $table.isDirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get snapshot => $composableBuilder(
+    column: $table.snapshot,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get replacedAt => $composableBuilder(
+    column: $table.replacedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PurchasesTableFilterComposer get purchaseId {
+    final $$PurchasesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.purchaseId,
+      referencedTable: $db.purchases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PurchasesTableFilterComposer(
+            $db: $db,
+            $table: $db.purchases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PurchaseRevisionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PurchaseRevisionsTable> {
+  $$PurchaseRevisionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userId => $composableBuilder(
+    column: $table.userId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDirty => $composableBuilder(
+    column: $table.isDirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get snapshot => $composableBuilder(
+    column: $table.snapshot,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get replacedAt => $composableBuilder(
+    column: $table.replacedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PurchasesTableOrderingComposer get purchaseId {
+    final $$PurchasesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.purchaseId,
+      referencedTable: $db.purchases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PurchasesTableOrderingComposer(
+            $db: $db,
+            $table: $db.purchases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PurchaseRevisionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PurchaseRevisionsTable> {
+  $$PurchaseRevisionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isDirty =>
+      $composableBuilder(column: $table.isDirty, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<String> get snapshot =>
+      $composableBuilder(column: $table.snapshot, builder: (column) => column);
+
+  GeneratedColumn<int> get replacedAt => $composableBuilder(
+    column: $table.replacedAt,
+    builder: (column) => column,
+  );
+
+  $$PurchasesTableAnnotationComposer get purchaseId {
+    final $$PurchasesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.purchaseId,
+      referencedTable: $db.purchases,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PurchasesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.purchases,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PurchaseRevisionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PurchaseRevisionsTable,
+          PurchaseRevision,
+          $$PurchaseRevisionsTableFilterComposer,
+          $$PurchaseRevisionsTableOrderingComposer,
+          $$PurchaseRevisionsTableAnnotationComposer,
+          $$PurchaseRevisionsTableCreateCompanionBuilder,
+          $$PurchaseRevisionsTableUpdateCompanionBuilder,
+          (PurchaseRevision, $$PurchaseRevisionsTableReferences),
+          PurchaseRevision,
+          PrefetchHooks Function({bool purchaseId})
+        > {
+  $$PurchaseRevisionsTableTableManager(
+    _$AppDatabase db,
+    $PurchaseRevisionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PurchaseRevisionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PurchaseRevisionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PurchaseRevisionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> userId = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int?> serverUpdatedAt = const Value.absent(),
+                Value<bool> isDirty = const Value.absent(),
+                Value<String> purchaseId = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<String> snapshot = const Value.absent(),
+                Value<int> replacedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => PurchaseRevisionsCompanion(
+                id: id,
+                userId: userId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                serverUpdatedAt: serverUpdatedAt,
+                isDirty: isDirty,
+                purchaseId: purchaseId,
+                revision: revision,
+                snapshot: snapshot,
+                replacedAt: replacedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String userId,
+                required int createdAt,
+                required int updatedAt,
+                Value<int?> deletedAt = const Value.absent(),
+                Value<int?> serverUpdatedAt = const Value.absent(),
+                Value<bool> isDirty = const Value.absent(),
+                required String purchaseId,
+                required int revision,
+                required String snapshot,
+                required int replacedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => PurchaseRevisionsCompanion.insert(
+                id: id,
+                userId: userId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                serverUpdatedAt: serverUpdatedAt,
+                isDirty: isDirty,
+                purchaseId: purchaseId,
+                revision: revision,
+                snapshot: snapshot,
+                replacedAt: replacedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$PurchaseRevisionsTable, PurchaseRevision>(table),
+                  $$PurchaseRevisionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({purchaseId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (purchaseId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.purchaseId,
+                                referencedTable:
+                                    $$PurchaseRevisionsTableReferences
+                                        ._purchaseIdTable(db),
+                                referencedColumn:
+                                    $$PurchaseRevisionsTableReferences
+                                        ._purchaseIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PurchaseRevisionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PurchaseRevisionsTable,
+      PurchaseRevision,
+      $$PurchaseRevisionsTableFilterComposer,
+      $$PurchaseRevisionsTableOrderingComposer,
+      $$PurchaseRevisionsTableAnnotationComposer,
+      $$PurchaseRevisionsTableCreateCompanionBuilder,
+      $$PurchaseRevisionsTableUpdateCompanionBuilder,
+      (PurchaseRevision, $$PurchaseRevisionsTableReferences),
+      PurchaseRevision,
+      PrefetchHooks Function({bool purchaseId})
+    >;
 typedef $$MoneyEntriesTableCreateCompanionBuilder =
     MoneyEntriesCompanion Function({
       required String id,
@@ -20863,6 +22172,8 @@ class $AppDatabaseManager {
       $$PaymentsTableTableManager(_db, _db.payments);
   $$PurchaseLinesTableTableManager get purchaseLines =>
       $$PurchaseLinesTableTableManager(_db, _db.purchaseLines);
+  $$PurchaseRevisionsTableTableManager get purchaseRevisions =>
+      $$PurchaseRevisionsTableTableManager(_db, _db.purchaseRevisions);
   $$MoneyEntriesTableTableManager get moneyEntries =>
       $$MoneyEntriesTableTableManager(_db, _db.moneyEntries);
   $$SyncStatesTableTableManager get syncStates =>
@@ -20970,6 +22281,8 @@ mixin _$PurchaseDaoMixin on DatabaseAccessor<AppDatabase> {
   $PurchasesTable get purchases => attachedDatabase.purchases;
   $ItemsTable get items => attachedDatabase.items;
   $PurchaseLinesTable get purchaseLines => attachedDatabase.purchaseLines;
+  $PurchaseRevisionsTable get purchaseRevisions =>
+      attachedDatabase.purchaseRevisions;
   $CustomersTable get customers => attachedDatabase.customers;
   $BillsTable get bills => attachedDatabase.bills;
   $PaymentsTable get payments => attachedDatabase.payments;
@@ -20988,6 +22301,11 @@ class PurchaseDaoManager {
       $$ItemsTableTableManager(_db.attachedDatabase, _db.items);
   $$PurchaseLinesTableTableManager get purchaseLines =>
       $$PurchaseLinesTableTableManager(_db.attachedDatabase, _db.purchaseLines);
+  $$PurchaseRevisionsTableTableManager get purchaseRevisions =>
+      $$PurchaseRevisionsTableTableManager(
+        _db.attachedDatabase,
+        _db.purchaseRevisions,
+      );
   $$CustomersTableTableManager get customers =>
       $$CustomersTableTableManager(_db.attachedDatabase, _db.customers);
   $$BillsTableTableManager get bills =>
@@ -21027,6 +22345,8 @@ mixin _$SyncDaoMixin on DatabaseAccessor<AppDatabase> {
   $PurchasesTable get purchases => attachedDatabase.purchases;
   $PaymentsTable get payments => attachedDatabase.payments;
   $PurchaseLinesTable get purchaseLines => attachedDatabase.purchaseLines;
+  $PurchaseRevisionsTable get purchaseRevisions =>
+      attachedDatabase.purchaseRevisions;
   $MoneyEntriesTable get moneyEntries => attachedDatabase.moneyEntries;
   $SyncStatesTable get syncStates => attachedDatabase.syncStates;
   $SyncLogsTable get syncLogs => attachedDatabase.syncLogs;
@@ -21066,6 +22386,11 @@ class SyncDaoManager {
       $$PaymentsTableTableManager(_db.attachedDatabase, _db.payments);
   $$PurchaseLinesTableTableManager get purchaseLines =>
       $$PurchaseLinesTableTableManager(_db.attachedDatabase, _db.purchaseLines);
+  $$PurchaseRevisionsTableTableManager get purchaseRevisions =>
+      $$PurchaseRevisionsTableTableManager(
+        _db.attachedDatabase,
+        _db.purchaseRevisions,
+      );
   $$MoneyEntriesTableTableManager get moneyEntries =>
       $$MoneyEntriesTableTableManager(_db.attachedDatabase, _db.moneyEntries);
   $$SyncStatesTableTableManager get syncStates =>

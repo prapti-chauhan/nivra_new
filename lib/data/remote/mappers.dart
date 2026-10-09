@@ -420,6 +420,7 @@ extension BillingMappers on RowMappers {
         'total': row.total,
         'occurred_at': row.occurredAt,
         'note': row.note,
+        'revision': row.revision,
       };
 
   static PurchasesCompanion purchaseFromJson(Map<String, dynamic> json) =>
@@ -440,6 +441,36 @@ extension BillingMappers on RowMappers {
         total: Value((json['total'] as num?)?.toInt() ?? 0),
         occurredAt: Value((json['occurred_at'] as num?)?.toInt() ?? 0),
         note: Value(json['note'] as String?),
+        revision: Value((json['revision'] as num?)?.toInt() ?? 0),
+        isDirty: const Value(false),
+      );
+
+  static Map<String, dynamic> purchaseRevisionToJson(PurchaseRevision row) => {
+        'id': row.id,
+        'user_id': row.userId,
+        'created_at': row.createdAt,
+        'updated_at': row.updatedAt,
+        'deleted_at': row.deletedAt,
+        'purchase_id': row.purchaseId,
+        'revision': row.revision,
+        'snapshot': row.snapshot,
+        'replaced_at': row.replacedAt,
+      };
+
+  static PurchaseRevisionsCompanion purchaseRevisionFromJson(
+    Map<String, dynamic> json,
+  ) =>
+      PurchaseRevisionsCompanion(
+        id: Value(json['id'] as String),
+        userId: Value(json['user_id'] as String),
+        createdAt: Value((json['created_at'] as num?)?.toInt() ?? 0),
+        updatedAt: Value((json['updated_at'] as num?)?.toInt() ?? 0),
+        deletedAt: Value((json['deleted_at'] as num?)?.toInt()),
+        serverUpdatedAt: Value((json['server_updated_at'] as num?)?.toInt()),
+        purchaseId: Value(json['purchase_id'] as String),
+        revision: Value((json['revision'] as num?)?.toInt() ?? 0),
+        snapshot: Value(json['snapshot'] as String? ?? '{}'),
+        replacedAt: Value((json['replaced_at'] as num?)?.toInt() ?? 0),
         isDirty: const Value(false),
       );
 

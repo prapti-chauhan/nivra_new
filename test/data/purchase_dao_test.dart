@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -478,6 +480,343 @@ void main() {
 
       final report = await db.rebuildAllCaches();
       expect(report.foundProblems, isFalse, reason: report.toString());
+    });
+  });
+  group('editing a purchase', () {
+    PurchaseLineDraft line(String itemId, {int qty = 10000, int cost = 1000}) =>
+        PurchaseLineDraft(
+          itemId: itemId,
+          name: '16mm hex bolt',
+          unit: 'pcs',
+          qty: qty,
+          unitCost: cost,
+        );
+
+    Future<int> cashOut() async => (await db
+            .customSelect(
+              "SELECT COALESCE(SUM(amount), 0) AS s FROM ledger_entries "
+              "WHERE account_type = 'cash'",
+              readsFrom: {db.ledgerEntries},
+            )
+            .getSingle())
+        .read<int>('s');
+
+    test('stock and the payable follow the new figures', () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem();
+      final id = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        lines: [line(item, qty: 10000, cost: 1000)], // 10 at 10.00 = 100.00
+      );
+      expect(await stockOf(item), 10000);
+      expect(await balanceOf(supplier), -10000);
+
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        lines: [line(item, qty: 8000, cost: 1250)], // 8 at 12.50 = 100.00
+      );
+      expect(await stockOf(item), 8000);
+      expect(await balanceOf(supplier), -10000);
+
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        lines: [line(item, qty: 10000, cost: 1500)], // 150.00
+      );
+      expect(await stockOf(item), 10000);
+      expect(await balanceOf(supplier), -15000);
+      expect(await dao.balanceFromLedger(supplier), -15000,
+          reason: 'the cache and the ledger agree after two edits');
+    });
+
+    test('keeps the old version and counts the edit', () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem();
+      final id = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        supplierBillNo: 'A-17',
+        lines: [line(item, qty: 10000, cost: 1000)],
+      );
+      clock.advance(5000);
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        supplierBillNo: 'A-71',
+        lines: [line(item, qty: 5000, cost: 1000)],
+      );
+
+      final purchase = (await dao.findPurchase(id))!;
+      expect(purchase.revision, 1);
+      expect(purchase.supplierBillNo, 'A-71');
+      expect(purchase.total, 5000);
+      expect(purchase.isDirty, isTrue);
+
+      final revisions = await db.select(db.purchaseRevisions).get();
+      expect(revisions, hasLength(1));
+      expect(revisions.single.revision, 0);
+      expect(revisions.single.isDirty, isTrue);
+      final snapshot = jsonDecode(revisions.single.snapshot) as Map;
+      expect(snapshot['total'], 10000);
+      expect(snapshot['supplier_bill_no'], 'A-17');
+      expect((snapshot['lines'] as List).single['qty'], 10000);
+
+      final live = await dao.purchaseLinesFor(id);
+      expect(live, hasLength(1));
+      expect(live.single.qty, 5000);
+      final all = await (db.select(db.purchaseLines)
+            ..where((t) => t.purchaseId.equals(id)))
+          .get();
+      expect(all, hasLength(2), reason: 'the old line is kept, marked deleted');
+    });
+
+    test('never edits a ledger or movement row, only adds opposing ones',
+        () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem();
+      final id = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        lines: [line(item)],
+      );
+      final ledgerBefore = await db.select(db.ledgerEntries).get();
+      final movesBefore = await db.select(db.stockMovements).get();
+
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        lines: [line(item, qty: 4000)],
+      );
+
+      final ledgerAfter = await db.select(db.ledgerEntries).get();
+      for (final before in ledgerBefore) {
+        final now = ledgerAfter.firstWhere((e) => e.id == before.id);
+        expect(now.amount, before.amount);
+        expect(now.updatedAt, before.updatedAt);
+        expect(now.deletedAt, isNull);
+      }
+      expect(ledgerAfter.length, greaterThan(ledgerBefore.length));
+      final movesAfter = await db.select(db.stockMovements).get();
+      for (final before in movesBefore) {
+        final now = movesAfter.firstWhere((m) => m.id == before.id);
+        expect(now.qtyDelta, before.qtyDelta);
+      }
+      expect(movesAfter.length, greaterThan(movesBefore.length));
+    });
+
+    test('payments already made are left alone', () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem();
+      final id = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        lines: [line(item)], // 100.00
+        amountPaid: 4000,
+      );
+      final cashBefore = await cashOut();
+      expect(cashBefore, -4000);
+
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        lines: [line(item, cost: 2000)], // 200.00
+      );
+
+      expect((await dao.findPurchase(id))!.amountPaid, 4000);
+      expect(await cashOut(), cashBefore, reason: 'the money really left');
+      expect(await balanceOf(supplier), -16000, reason: '200.00 less 40.00');
+    });
+
+    test('editing below what was paid shows an overpayment, not a lost payment',
+        () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem();
+      final id = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        lines: [line(item)], // 100.00
+        amountPaid: 10000,
+      );
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        lines: [line(item, qty: 5000)], // 50.00
+      );
+      expect(await balanceOf(supplier), 5000,
+          reason: 'he has paid 50.00 more than he owes; the supplier owes him');
+      expect((await dao.findPurchase(id))!.amountPaid, 10000);
+    });
+
+    test('moves to another supplier only while nothing has been paid',
+        () async {
+      final verma = await dao.createSupplier(userId: userId, name: 'Verma');
+      final gupta = await dao.createSupplier(userId: userId, name: 'Gupta');
+      final item = await anItem();
+
+      final unpaid = await dao.savePurchase(
+        userId: userId,
+        supplierId: verma,
+        lines: [line(item)],
+      );
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: unpaid,
+        supplierId: gupta,
+        lines: [line(item)],
+      );
+      expect(await balanceOf(verma), 0);
+      expect(await balanceOf(gupta), -10000);
+      expect(await dao.balanceFromLedger(verma), 0);
+      expect(await dao.balanceFromLedger(gupta), -10000);
+
+      final paid = await dao.savePurchase(
+        userId: userId,
+        supplierId: verma,
+        lines: [line(item)],
+        amountPaid: 2500,
+      );
+      await expectLater(
+        dao.revisePurchase(
+          userId: userId,
+          purchaseId: paid,
+          supplierId: gupta,
+          lines: [line(item)],
+        ),
+        throwsStateError,
+      );
+      // And the refused attempt changed nothing.
+      expect((await dao.findPurchase(paid))!.supplierId, verma);
+      expect((await dao.findPurchase(paid))!.revision, 0);
+      expect(await balanceOf(verma), -7500);
+    });
+
+    test('an item takes its cost from an edit only on its newest purchase',
+        () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem(cost: 500);
+      final older = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        occurredAt: 1700000000000,
+        lines: [line(item, cost: 1000)],
+      );
+      final newer = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        occurredAt: 1700000100000,
+        lines: [line(item, cost: 1200)],
+      );
+      expect((await inventory.findItem(item))!.purchasePrice, 1200);
+
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: older,
+        supplierId: supplier,
+        lines: [line(item, cost: 900)],
+      );
+      expect((await inventory.findItem(item))!.purchasePrice, 1200,
+          reason: 'correcting an old delivery must not undo the newer price');
+
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: newer,
+        supplierId: supplier,
+        lines: [line(item, cost: 1300)],
+      );
+      expect((await inventory.findItem(item))!.purchasePrice, 1300);
+    });
+
+    test('deleting an edited purchase puts everything back to zero', () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem();
+      final id = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        lines: [line(item)],
+      );
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        lines: [line(item, qty: 7000, cost: 1300)],
+      );
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        lines: [line(item, qty: 3000, cost: 1100)],
+      );
+      await dao.deletePurchase(userId: userId, purchaseId: id);
+
+      expect(await stockOf(item), 0);
+      expect(await balanceOf(supplier), 0);
+      expect(await dao.balanceFromLedger(supplier), 0);
+    });
+
+    test('leaves no cache wrong for the rebuild to find', () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem();
+      final id = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        lines: [line(item)],
+        amountPaid: 3000,
+      );
+      await dao.revisePurchase(
+        userId: userId,
+        purchaseId: id,
+        supplierId: supplier,
+        lines: [line(item, qty: 6000)],
+      );
+      final report = await db.rebuildAllCaches();
+      expect(report.foundProblems, isFalse, reason: report.toString());
+    });
+
+    test('refuses an empty purchase, a missing one and a deleted one',
+        () async {
+      final supplier = await dao.createSupplier(userId: userId, name: 'Verma');
+      final item = await anItem();
+      final id = await dao.savePurchase(
+        userId: userId,
+        supplierId: supplier,
+        lines: [line(item)],
+      );
+      expect(
+        () => dao.revisePurchase(
+          userId: userId,
+          purchaseId: id,
+          supplierId: supplier,
+          lines: const [],
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => dao.revisePurchase(
+          userId: userId,
+          purchaseId: 'nope',
+          supplierId: supplier,
+          lines: [line(item)],
+        ),
+        throwsStateError,
+      );
+      await dao.deletePurchase(userId: userId, purchaseId: id);
+      expect(
+        () => dao.revisePurchase(
+          userId: userId,
+          purchaseId: id,
+          supplierId: supplier,
+          lines: [line(item)],
+        ),
+        throwsStateError,
+      );
     });
   });
 }

@@ -865,3 +865,83 @@ equality) and two widget tests through the real calendar: a range picked there
 filters sales to the bills inside it, including one rung up in the evening of the
 last day and excluding the day after; cancelling keeps the span. No schema
 change. Not run on a device.
+
+---
+
+# Slice ten — editing a purchase in place
+
+This reverses decision 16 (delete and re-enter). That call said revisions "can
+be added later without a migration"; that was wrong, because keeping the old
+version needs a column and a table. `supabase/schema_v6.sql` and Drift schema 6
+are the migration.
+
+## Decided while building
+
+- **Reverse and reissue, as bills do.** The previous version is snapshotted, its
+  stock movements and ledger rows are cancelled by opposing rows, and the new
+  version is written. No ledger or movement row is ever edited (a test checks
+  every original survives untouched). `purchases.revision` counts edits and
+  `purchase_revisions` holds one JSON snapshot per superseded version.
+- **Cancelling works from the net of every ledger entry written for the
+  purchase, account by account**, not from entries of one reason. See "Found
+  while building" for why.
+- **Payments are left alone**, as with bills: the money really went out. Editing
+  a purchase below what was paid shows as an overpayment (the supplier's balance
+  goes positive) rather than losing a payment.
+- **The supplier can be changed only while nothing has been paid.** A payment
+  belongs to the supplier it was made to; moving the purchase from under it
+  would leave two accounts wrong. The editor shows the supplier as fixed and
+  says why, and the DAO refuses regardless of the UI.
+- **An item's stored cost follows an edit only when that is the item's newest
+  live purchase** (by date, then creation). Correcting a typo on last month's
+  delivery must not put last month's price back on an item bought since. Known
+  edge: if the newest purchase is edited to drop an item, the item keeps the
+  cost that purchase had set.
+- **The edit form is the new-purchase form, filled in.** "Paid now" is hidden
+  when editing, since payments are not part of correcting a purchase. Discount,
+  note and date are carried over unchanged because the form has never exposed
+  them.
+- Edited purchases show "Edited" and an "Earlier versions" list, the same shape
+  as a bill's.
+
+## Found while building
+
+1. **Existing bug, NOT fixed: editing a bill twice leaves the customer's
+   balance wrong.** `reviseBill` cancels the old sale by reversing only ledger
+   entries with reason `sale`. After one edit there are two such rows for the
+   bill (the original and the reissue) plus one reversal, so the second edit
+   reverses the original again. A probe: a credit bill of Rs 100, edited to
+   Rs 200, then to Rs 300, leaves the customer owing Rs 200, not Rs 300; the
+   cached balance and the ledger agree with each other, so a cache rebuild does
+   not notice. Stock is unaffected. Bills edited more than once on a real phone
+   are already wrong and need a correcting entry, not just a code fix, so this
+   was left for a decision rather than changed silently.
+2. **Fixed: signing out did not clear suppliers, purchases, purchase lines or
+   money entries**, so a second login on the same phone would still see the
+   first shop's. `wipeAll` now clears them, and the new `purchase_revisions`.
+3. **Fixed in my own migrations, latent in an older one.** `createTable` builds
+   a table from its current definition, so an upgrade that creates a table in
+   one step and then `addColumn`s a column that table already has in a later
+   step fails with "duplicate column". The migration tests caught it for
+   `purchases.revision`. Slices 8 and 10 now add their columns only if the table
+   existed before. The slice-three step that adds `payments.supplier_id` has the
+   same shape and would fail on a database still at version 1; tests cannot
+   start below version 2, so this is unverified and probably unreachable.
+
+## Verified, not asserted
+
+Offline: `flutter analyze` clean; 304 tests pass. Ten DAO tests for editing (the
+payable and stock follow two successive edits and the ledger agrees, the old
+version and the edit count are kept, no existing row is changed, payments are
+untouched, overpayment, supplier moves allowed only unpaid and a refused attempt
+changes nothing, item cost follows only the newest purchase, deleting an edited
+purchase returns everything to zero, a cache rebuild finds nothing wrong,
+refusals), mapper round trips, a v5 -> v6 migration test, a test that sign-out
+empties every table, and two widget tests (edit from the detail page and see the
+old version; supplier locked once paid).
+
+**Not verified: `schema_v6.sql` has not been applied to the live project.** The
+live test `an edited purchase, and the version it replaced, reach a second
+device` is written and has not been run; it fails until the SQL is applied.
+Until then a device that edits a purchase will have the push of that purchase
+and its revision rejected. Not run on a device.

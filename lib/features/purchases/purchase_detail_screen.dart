@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import '../../app/providers.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../core/quantity.dart';
+import '../../data/db/database.dart';
 
 class PurchaseDetailScreen extends ConsumerWidget {
   const PurchaseDetailScreen({super.key, required this.purchaseId});
@@ -18,7 +21,10 @@ class PurchaseDetailScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     ref.watch(currentUserProvider);
     final purchase = ref.watch(purchaseProvider(purchaseId)).value;
-    final lines = ref.watch(purchaseLinesProvider(purchaseId)).value ?? const [];
+    final lines =
+        ref.watch(purchaseLinesProvider(purchaseId)).value ?? const [];
+    final revisions =
+        ref.watch(purchaseRevisionsProvider(purchaseId)).value ?? const [];
 
     if (purchase == null) {
       return Scaffold(
@@ -34,6 +40,11 @@ class PurchaseDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(purchase.supplierName ?? 'Purchase'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit',
+            onPressed: () => context.push('/purchases/$purchaseId/edit'),
+          ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: () => _delete(context, ref),
@@ -58,6 +69,8 @@ class PurchaseDetailScreen extends ConsumerWidget {
                       'Their bill ${purchase.supplierBillNo}',
                       style: theme.textTheme.bodySmall,
                     ),
+                  if (purchase.revision > 0)
+                    Text('Edited', style: theme.textTheme.bodySmall),
                   const SizedBox(height: 8),
                   Text(
                     Money.format(purchase.total),
@@ -66,8 +79,9 @@ class PurchaseDetailScreen extends ConsumerWidget {
                   if (due > 0)
                     Text(
                       'Still owed ${Money.format(due)}',
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: theme.colorScheme.error),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
                     )
                   else
                     Text('Paid', style: theme.textTheme.bodyMedium),
@@ -98,6 +112,20 @@ class PurchaseDetailScreen extends ConsumerWidget {
               ],
             ),
           ],
+          if (revisions.isNotEmpty) ...[
+            const SizedBox(height: 28),
+            Text('Earlier versions', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              'This purchase has been edited ${revisions.length} '
+              'time${revisions.length == 1 ? '' : 's'}. Nothing was erased.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (final r in revisions) _RevisionTile(revision: r),
+          ],
         ],
       ),
     );
@@ -118,5 +146,65 @@ class PurchaseDetailScreen extends ConsumerWidget {
       const SnackBar(content: Text('Purchase removed. Stock put back.')),
     );
     context.pop();
+  }
+}
+
+class _RevisionTile extends StatelessWidget {
+  const _RevisionTile({required this.revision});
+
+  final PurchaseRevision revision;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final data = jsonDecode(revision.snapshot) as Map<String, dynamic>;
+    final lines = (data['lines'] as List).cast<Map<String, dynamic>>();
+    final when = DateTime.fromMillisecondsSinceEpoch(
+      revision.replacedAt,
+    ).toLocal();
+
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(left: 8, bottom: 12),
+      title: Text(
+        'Version ${revision.revision + 1} · '
+        '${Money.formatCompact((data['total'] as num).toInt())}',
+        style: theme.textTheme.bodyLarge,
+      ),
+      subtitle: Text(
+        'Replaced ${DateFormat('d MMM yyyy, h:mm a').format(when)}',
+        style: theme.textTheme.bodySmall,
+      ),
+      children: [
+        if (data['supplier_name'] != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'From ${data['supplier_name']}',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        for (final line in lines)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${line['name']}  ·  '
+                    '${Qty.formatWithUnit((line['qty'] as num).toInt(), line['unit'] as String)}'
+                    ' at ${Money.format((line['unit_cost'] as num).toInt())}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                Text(
+                  Money.format((line['line_total'] as num).toInt()),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 }

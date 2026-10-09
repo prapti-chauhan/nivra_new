@@ -136,3 +136,7 @@ touch the report period; kept separate per "one slice per commit".)
 - Slice 8 code, tests and schema_v5.sql written. Live test written, NOT run (SQL not applied).
 - Slice 8 committed 98bdbb9.
 - Slice 9 done: ReportSpan + shared PeriodBar with Custom chip.
+- Slice 9 committed 3682956.
+- Slice 10 done: revisePurchase, schema_v6.sql, edit UI. Live test written, NOT run (SQL not applied).
+- FOUND, NOT FIXED: reviseBill double-reverses on a second edit (customer balance wrong). Needs user decision (fix code + repair existing data?).
+- FIXED: wipeAll skipped suppliers/purchases/purchase_lines/money_entries.

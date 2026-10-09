@@ -759,5 +759,95 @@ void main() {
     await one.close();
     await two.close();
   });
+  // Needs supabase/schema_v6.sql applied to the project first. Written but NOT
+  // yet run: until that SQL is applied it fails by design.
+  test('an edited purchase, and the version it replaced, reach a second device',
+      () async {
+    final one = AppDatabase.forTesting(NativeDatabase.memory());
+    final buyOne = PurchaseDao(one);
+    final invOne = InventoryDao(one);
+    final syncOne = SyncService(
+      db: one,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+
+    final supplierId = await buyOne.createSupplier(
+      userId: userId,
+      name: 'IT Edit Traders',
+    );
+    final itemId = await invOne.createItem(
+      userId: userId,
+      name: 'IT edited bolt',
+      salePrice: 2500,
+      purchasePrice: 1000,
+    );
+    PurchaseLineDraft draft(int qty, int cost) => PurchaseLineDraft(
+          itemId: itemId,
+          name: 'IT edited bolt',
+          unit: 'pcs',
+          qty: qty,
+          unitCost: cost,
+        );
+
+    final purchaseId = await buyOne.savePurchase(
+      userId: userId,
+      supplierId: supplierId,
+      supplierBillNo: 'IT-E-1',
+      lines: [draft(10000, 1000)], // Rs 100
+    );
+    await syncOne.start(userId);
+    await syncOne.syncNow();
+    expect(syncOne.currentStatus.phase, SyncPhase.synced,
+        reason: 'first push: ${syncOne.currentStatus.message}');
+
+    await buyOne.revisePurchase(
+      userId: userId,
+      purchaseId: purchaseId,
+      supplierId: supplierId,
+      supplierBillNo: 'IT-E-2',
+      lines: [draft(6000, 1500)], // Rs 90
+    );
+    await syncOne.syncNow();
+    expect(syncOne.currentStatus.phase, SyncPhase.synced,
+        reason: 'the edit should push: ${syncOne.currentStatus.message}');
+    expect(await SyncDao(one).pendingCount(), 0);
+
+    final two = AppDatabase.forTesting(NativeDatabase.memory());
+    final buyTwo = PurchaseDao(two);
+    final syncTwo = SyncService(
+      db: two,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+    await syncTwo.start(userId);
+    await syncTwo.syncNow();
+
+    final purchase = await buyTwo.findPurchase(purchaseId);
+    expect(purchase, isNotNull);
+    expect(purchase!.revision, 1);
+    expect(purchase.total, 9000);
+    expect(purchase.supplierBillNo, 'IT-E-2');
+
+    final live = await buyTwo.purchaseLinesFor(purchaseId);
+    expect(live, hasLength(1));
+    expect(live.single.qty, 6000);
+
+    final revisions = await (two.select(two.purchaseRevisions)
+          ..where((t) => t.purchaseId.equals(purchaseId)))
+        .get();
+    expect(revisions, hasLength(1), reason: 'the version it replaced arrived');
+    expect(revisions.single.revision, 0);
+
+    // Rebuilt on device two from the ledger rows alone, through an edit.
+    expect((await buyTwo.findSupplier(supplierId))!.balance, -9000);
+    expect(await buyTwo.balanceFromLedger(supplierId), -9000);
+    expect((await InventoryDao(two).findItem(itemId))!.stockQty, 6000);
+
+    await syncOne.stop();
+    await syncTwo.stop();
+    await one.close();
+    await two.close();
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }
 

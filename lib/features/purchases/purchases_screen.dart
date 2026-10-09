@@ -62,7 +62,8 @@ class PurchasesScreen extends ConsumerWidget {
                           [
                             DateFormat('d MMM yyyy').format(
                               DateTime.fromMillisecondsSinceEpoch(
-                                  purchase.occurredAt),
+                                purchase.occurredAt,
+                              ),
                             ),
                             if (purchase.supplierBillNo != null)
                               purchase.supplierBillNo!,
@@ -79,8 +80,9 @@ class PurchasesScreen extends ConsumerWidget {
                             if (due > 0)
                               Text(
                                 'due ${Money.formatCompact(due)}',
-                                style: theme.textTheme.bodySmall
-                                    ?.copyWith(color: theme.colorScheme.error),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.error,
+                                ),
                               ),
                           ],
                         ),

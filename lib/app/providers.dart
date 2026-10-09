@@ -271,6 +271,11 @@ final purchaseLinesProvider =
   (ref, id) => ref.watch(purchaseDaoProvider).watchPurchaseLines(id),
 );
 
+final purchaseRevisionsProvider =
+    StreamProvider.family<List<PurchaseRevision>, String>(
+  (ref, id) => ref.watch(purchaseDaoProvider).watchRevisions(id),
+);
+
 // ---------------------------------------------------------------------------
 // Reports.
 // ---------------------------------------------------------------------------

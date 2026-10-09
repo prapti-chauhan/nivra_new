@@ -26,6 +26,7 @@ part 'database.g.dart';
     Suppliers,
     Purchases,
     PurchaseLines,
+    PurchaseRevisions,
     MoneyEntries,
     SyncStates,
     SyncLogs,
@@ -44,7 +45,7 @@ class AppDatabase extends _$AppDatabase {
   Clock get clock => _clock;
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -118,8 +119,24 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 5) {
             // Slice eight: a bill line's cost can be corrected afterwards.
-            await m.addColumn(billLines, billLines.originalUnitCost);
-            await m.addColumn(billLines, billLines.costCorrectedAt);
+            // `createTable` above builds a table from its current definition,
+            // so a database that only just got `bill_lines` already has these
+            // columns, and adding them again would fail.
+            if (from >= 2) {
+              await m.addColumn(billLines, billLines.originalUnitCost);
+              await m.addColumn(billLines, billLines.costCorrectedAt);
+            }
+          }
+          if (from < 6) {
+            // Slice ten: a purchase can be edited, and keeps what it was. The
+            // same caution as above: `purchases` is created in the step for
+            // version 3, with `revision` already in it.
+            if (from >= 3) {
+              await m.addColumn(purchases, purchases.revision);
+            }
+            await m.createTable(purchaseRevisions);
+            await m.createIndex(idxPurchaseRevisionsPurchase);
+            await m.createIndex(idxPurchaseRevisionsDirty);
           }
         },
         beforeOpen: (details) async {
@@ -411,6 +428,7 @@ class SyncTables {
   static const String suppliers = 'suppliers';
   static const String purchases = 'purchases';
   static const String purchaseLines = 'purchase_lines';
+  static const String purchaseRevisions = 'purchase_revisions';
   static const String moneyEntries = 'money_entries';
 
   /// Push order matters: a row must never reach Supabase before the row it
@@ -430,6 +448,7 @@ class SyncTables {
     ledgerEntries,
     payments,
     billRevisions,
+    purchaseRevisions,
   ];
 }
 
@@ -470,6 +489,7 @@ class CacheRepairReport {
     Suppliers,
     Purchases,
     PurchaseLines,
+    PurchaseRevisions,
     MoneyEntries,
     SyncStates,
     SyncLogs,
@@ -522,6 +542,12 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
             ..limit(limit))
           .get();
 
+  Future<List<PurchaseRevision>> dirtyPurchaseRevisions({int limit = 200}) =>
+      (select(purchaseRevisions)
+            ..where((t) => t.isDirty.equals(true))
+            ..limit(limit))
+          .get();
+
   Future<List<LedgerEntry>> dirtyLedgerEntries({int limit = 500}) =>
       (select(ledgerEntries)
             ..where((t) => t.isDirty.equals(true))
@@ -550,6 +576,7 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
       (SELECT COUNT(*) FROM suppliers WHERE is_dirty = 1) +
       (SELECT COUNT(*) FROM purchases WHERE is_dirty = 1) +
       (SELECT COUNT(*) FROM purchase_lines WHERE is_dirty = 1) +
+      (SELECT COUNT(*) FROM purchase_revisions WHERE is_dirty = 1) +
       (SELECT COUNT(*) FROM money_entries WHERE is_dirty = 1) AS pending
   ''';
 
@@ -606,6 +633,7 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
         suppliers,
         purchases,
         purchaseLines,
+        purchaseRevisions,
         moneyEntries,
       };
 
@@ -622,6 +650,7 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
         SyncTables.suppliers => {suppliers},
         SyncTables.purchases => {purchases},
         SyncTables.purchaseLines => {purchaseLines},
+        SyncTables.purchaseRevisions => {purchaseRevisions},
         SyncTables.moneyEntries => {moneyEntries},
         _ => const {},
       };
@@ -694,6 +723,9 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
 
   Future<void> upsertPulledPurchaseLine(PurchaseLinesCompanion row) =>
       into(purchaseLines).insertOnConflictUpdate(row);
+
+  Future<void> upsertPulledPurchaseRevision(PurchaseRevisionsCompanion row) =>
+      into(purchaseRevisions).insertOnConflictUpdate(row);
 
   Future<void> upsertPulledMoneyEntry(MoneyEntriesCompanion row) =>
       into(moneyEntries).insertOnConflictUpdate(row);
@@ -799,11 +831,16 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
     await transaction(() async {
       // Reverse of the push order: children before parents.
       await delete(billRevisions).go();
+      await delete(purchaseRevisions).go();
       await delete(payments).go();
       await delete(ledgerEntries).go();
       await delete(stockMovements).go();
       await delete(billLines).go();
       await delete(bills).go();
+      await delete(purchaseLines).go();
+      await delete(purchases).go();
+      await delete(suppliers).go();
+      await delete(moneyEntries).go();
       await delete(customers).go();
       await delete(items).go();
       await delete(businessProfiles).go();
@@ -1824,7 +1861,15 @@ class PurchaseLineDraft {
 /// a supplier he owes sits at a negative balance and the UI flips it once, at
 /// the edge, through `payableFromBalance`.
 @DriftAccessor(
-  tables: [Suppliers, Purchases, PurchaseLines, Payments, LedgerEntries, Items],
+  tables: [
+    Suppliers,
+    Purchases,
+    PurchaseLines,
+    PurchaseRevisions,
+    Payments,
+    LedgerEntries,
+    Items,
+  ],
 )
 class PurchaseDao extends DatabaseAccessor<AppDatabase>
     with _$PurchaseDaoMixin {
@@ -2266,6 +2311,296 @@ class PurchaseDao extends DatabaseAccessor<AppDatabase>
     });
 
     return id;
+  }
+
+  Stream<List<PurchaseRevision>> watchRevisions(String purchaseId) {
+    final query = select(purchaseRevisions)
+      ..where((t) => t.purchaseId.equals(purchaseId))
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.revision, mode: OrderingMode.desc),
+      ]);
+    return query.watch();
+  }
+
+  /// Replaces a purchase's contents, leaving a trace.
+  ///
+  /// Mirrors [BillingDao.reviseBill]: the previous version is snapshotted,
+  /// what it did to stock and to the books is cancelled by opposing rows, and
+  /// the new version is written and applied. No ledger or movement row is ever
+  /// edited. Payments made against the purchase are left alone — the money
+  /// really did go out — so a purchase edited below what was already paid shows
+  /// as overpaid rather than quietly losing a payment.
+  ///
+  /// The supplier can be changed only while nothing has been paid against it:
+  /// a payment belongs to the supplier it was made to, and moving the purchase
+  /// away from under it would leave two suppliers' accounts wrong.
+  ///
+  /// An item's stored cost follows the purchase only when this is that item's
+  /// most recent purchase. Correcting a typo on last month's delivery must not
+  /// put last month's price back on an item he has bought since.
+  Future<void> revisePurchase({
+    required String userId,
+    required String purchaseId,
+    required String supplierId,
+    required List<PurchaseLineDraft> lines,
+    String? supplierName,
+    String? supplierBillNo,
+    Discount discount = const Discount.none(),
+    int? occurredAt,
+    String? note,
+  }) async {
+    if (lines.isEmpty) {
+      throw ArgumentError('A purchase needs at least one line');
+    }
+    final now = _clock.nowMillis();
+
+    await transaction(() async {
+      final purchase = await findPurchase(purchaseId);
+      if (purchase == null || purchase.deletedAt != null) {
+        throw StateError('No such purchase: $purchaseId');
+      }
+
+      if (supplierId != purchase.supplierId) {
+        final paid = await (select(payments)
+              ..where((t) =>
+                  t.purchaseId.equals(purchaseId) & t.deletedAt.isNull()))
+            .get();
+        if (paid.isNotEmpty) {
+          throw StateError(
+            'Payments have been made against this purchase, so it cannot be '
+            'moved to another supplier.',
+          );
+        }
+      }
+
+      final oldLines = await purchaseLinesFor(purchaseId);
+      await _snapshotPurchase(
+        userId: userId,
+        purchase: purchase,
+        lines: oldLines,
+        now: now,
+      );
+
+      // Cancel what the old version did.
+      for (final line in oldLines) {
+        final itemId = line.itemId;
+        if (itemId == null) continue;
+        await _inventory.applyMovement(
+          userId: userId,
+          itemId: itemId,
+          qtyDelta: -line.qty,
+          reason: MovementReason.reversal,
+          unitCost: line.unitCost,
+          source: MovementSource.purchase,
+          sourceId: purchaseId,
+          occurredAt: now,
+        );
+      }
+      await _reversePurchaseLedger(
+        userId: userId,
+        purchaseId: purchaseId,
+        now: now,
+      );
+
+      final totals = totalsFor(
+        lineTotals: lines.map((l) => l.total),
+        discount: discount,
+      );
+      final when = occurredAt ?? purchase.occurredAt;
+
+      await (update(purchases)..where((t) => t.id.equals(purchaseId))).write(
+        PurchasesCompanion(
+          supplierId: Value(supplierId),
+          supplierName: Value(supplierName),
+          supplierBillNo: Value(supplierBillNo),
+          subtotal: Value(totals.subtotal),
+          discountType: Value(discount.type.wire),
+          discountValue: Value(discount.value),
+          discountAmount: Value(totals.discount),
+          total: Value(totals.total),
+          occurredAt: Value(when),
+          note: Value(note),
+          revision: Value(purchase.revision + 1),
+          updatedAt: Value(now),
+          isDirty: const Value(true),
+        ),
+      );
+
+      var position = 0;
+      for (final line in lines) {
+        await into(purchaseLines).insert(
+          PurchaseLinesCompanion.insert(
+            id: newId(),
+            userId: userId,
+            createdAt: now,
+            updatedAt: now,
+            purchaseId: purchaseId,
+            itemId: Value(line.itemId),
+            name: line.name,
+            unit: Value(line.unit),
+            qty: line.qty,
+            unitCost: line.unitCost,
+            lineTotal: line.total,
+            position: Value(position++),
+          ),
+        );
+      }
+
+      await _applyPurchaseEffects(
+        userId: userId,
+        purchaseId: purchaseId,
+        supplierId: supplierId,
+        lines: lines,
+        total: totals.total,
+        occurredAt: when,
+        updateItemCost: false,
+      );
+
+      for (final line in lines) {
+        final itemId = line.itemId;
+        if (itemId == null) continue;
+        if (await _newerPurchaseOf(itemId, purchaseId, when, purchase.createdAt)) {
+          continue;
+        }
+        await (update(items)..where((t) => t.id.equals(itemId))).write(
+          ItemsCompanion(
+            purchasePrice: Value(line.unitCost),
+            updatedAt: Value(_clock.nowMillis()),
+            isDirty: const Value(true),
+          ),
+        );
+      }
+    });
+  }
+
+  /// True when some other live purchase of [itemId] is newer than the one
+  /// being edited, which then has no business setting the item's cost.
+  Future<bool> _newerPurchaseOf(
+    String itemId,
+    String purchaseId,
+    int occurredAt,
+    int createdAt,
+  ) async {
+    final row = await customSelect(
+      'SELECT 1 AS hit FROM purchase_lines pl '
+      'JOIN purchases p ON p.id = pl.purchase_id '
+      'WHERE pl.item_id = ? AND pl.deleted_at IS NULL '
+      'AND p.deleted_at IS NULL AND p.id != ? '
+      'AND (p.occurred_at > ? OR (p.occurred_at = ? AND p.created_at > ?)) '
+      'LIMIT 1',
+      variables: [
+        Variable<String>(itemId),
+        Variable<String>(purchaseId),
+        Variable<int>(occurredAt),
+        Variable<int>(occurredAt),
+        Variable<int>(createdAt),
+      ],
+      readsFrom: {purchaseLines, purchases},
+    ).getSingleOrNull();
+    return row != null;
+  }
+
+  /// Cancels whatever the books currently say about this purchase, account by
+  /// account. It works from the net of every entry written for the purchase
+  /// rather than from one reason, so cancelling a purchase that has already
+  /// been revised does not cancel its earlier, already-cancelled entries again.
+  Future<void> _reversePurchaseLedger({
+    required String userId,
+    required String purchaseId,
+    required int now,
+  }) async {
+    final rows = await customSelect(
+      'SELECT account_type, account_id, SUM(amount) AS net '
+      'FROM ledger_entries '
+      "WHERE source_type = 'purchase' AND source_id = ? "
+      'GROUP BY account_type, account_id',
+      variables: [Variable<String>(purchaseId)],
+      readsFrom: {ledgerEntries},
+    ).get();
+
+    for (final row in rows) {
+      final net = row.read<int>('net');
+      if (net == 0) continue;
+      final account = LedgerAccount.fromWire(row.read<String>('account_type'));
+      final accountId = row.readNullable<String>('account_id');
+      if (account == LedgerAccount.supplier && accountId != null) {
+        await _addSupplierEntry(
+          userId: userId,
+          supplierId: accountId,
+          amount: -net,
+          reason: LedgerReason.purchaseReversal,
+          sourceType: 'purchase',
+          sourceId: purchaseId,
+          occurredAt: now,
+        );
+      } else {
+        await _parties.addLedgerEntry(
+          userId: userId,
+          account: account,
+          accountId: accountId,
+          amount: -net,
+          reason: LedgerReason.purchaseReversal,
+          sourceType: 'purchase',
+          sourceId: purchaseId,
+          occurredAt: now,
+        );
+      }
+    }
+  }
+
+  Future<void> _snapshotPurchase({
+    required String userId,
+    required Purchase purchase,
+    required List<PurchaseLine> lines,
+    required int now,
+  }) async {
+    final snapshot = jsonEncode({
+      'revision': purchase.revision,
+      'supplier_id': purchase.supplierId,
+      'supplier_name': purchase.supplierName,
+      'supplier_bill_no': purchase.supplierBillNo,
+      'subtotal': purchase.subtotal,
+      'discount_type': purchase.discountType,
+      'discount_value': purchase.discountValue,
+      'discount_amount': purchase.discountAmount,
+      'total': purchase.total,
+      'occurred_at': purchase.occurredAt,
+      'note': purchase.note,
+      'lines': [
+        for (final l in lines)
+          {
+            'item_id': l.itemId,
+            'name': l.name,
+            'unit': l.unit,
+            'qty': l.qty,
+            'unit_cost': l.unitCost,
+            'line_total': l.lineTotal,
+          },
+      ],
+    });
+
+    await into(purchaseRevisions).insert(
+      PurchaseRevisionsCompanion.insert(
+        id: newId(),
+        userId: userId,
+        createdAt: now,
+        updatedAt: now,
+        purchaseId: purchase.id,
+        revision: purchase.revision,
+        snapshot: snapshot,
+        replacedAt: now,
+      ),
+    );
+
+    await (update(purchaseLines)
+          ..where((t) => t.purchaseId.equals(purchase.id)))
+        .write(
+      PurchaseLinesCompanion(
+        deletedAt: Value(now),
+        updatedAt: Value(now),
+        isDirty: const Value(true),
+      ),
+    );
   }
 
   /// Undoes a purchase by writing opposing rows. Nothing is edited or deleted.

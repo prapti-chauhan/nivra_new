@@ -269,6 +269,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             parentNavigatorKey: _rootKey,
             builder: (context, state) =>
                 PurchaseDetailScreen(purchaseId: state.pathParameters['id']!),
+            routes: [
+              GoRoute(
+                path: 'edit',
+                parentNavigatorKey: _rootKey,
+                builder: (context, state) => PurchaseEditorScreen(
+                  purchaseId: state.pathParameters['id']!,
+                ),
+              ),
+            ],
           ),
         ],
       ),

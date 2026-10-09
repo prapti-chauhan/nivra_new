@@ -14,6 +14,7 @@ import '../generated_migrations/schema.dart';
 import '../generated_migrations/schema_v2.dart' as v2;
 import '../generated_migrations/schema_v3.dart' as v3;
 import '../generated_migrations/schema_v4.dart' as v4;
+import '../generated_migrations/schema_v5.dart' as v5;
 
 /// Ramesh already has the app on his phone with real bills in it. A fresh
 /// install exercises `createAll` and would never touch `onUpgrade`, so without
@@ -28,7 +29,7 @@ void main() {
   test('a v2 database upgrades to the current schema with the expected shape', () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 5);
+    await verifier.migrateAndValidate(db, 6);
     await db.close();
   });
 
@@ -103,7 +104,7 @@ void main() {
       connection,
       clock: FixedClock(1700000000000),
     );
-    await verifier.migrateAndValidate(db, 5);
+    await verifier.migrateAndValidate(db, 6);
 
     final dao = PurchaseDao(db);
     final itemId = await InventoryDao(db).createItem(
@@ -135,7 +136,7 @@ void main() {
   test('a v3 database upgrades to the current schema with the expected shape', () async {
     final connection = await verifier.startAt(3);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 5);
+    await verifier.migrateAndValidate(db, 6);
     await db.close();
   });
 
@@ -144,7 +145,7 @@ void main() {
     // guarded by `from < N`, and this is what proves they chain.
     final connection = await verifier.startAt(2);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 5);
+    await verifier.migrateAndValidate(db, 6);
     await db.close();
   });
 
@@ -222,6 +223,39 @@ void main() {
     expect(line.read<int>('unit_cost'), 1800);
     expect(line.read<int?>('original_unit_cost'), isNull);
     expect(line.read<int?>('cost_corrected_at'), isNull);
+    await upgraded.close();
+  });
+  test('a v5 database gains purchase editing, with existing purchases unedited',
+      () async {
+    final dir = await Directory.systemTemp.createTemp('nivra_migration_v5');
+    final file = File('${dir.path}/nivra.sqlite');
+
+    final old = v5.DatabaseAtV5(NativeDatabase(file));
+    await old.customSelect('SELECT 1').get();
+    await old.customStatement(
+      "INSERT INTO suppliers (id, user_id, created_at, updated_at, is_dirty, "
+      "name, balance) VALUES ('s1', 'u1', 1, 1, 0, 'Verma', -500)",
+    );
+    await old.customStatement(
+      "INSERT INTO purchases (id, user_id, created_at, updated_at, is_dirty, "
+      "supplier_id, total, occurred_at) VALUES ('p1', 'u1', 1, 1, 0, 's1', 500, 1)",
+    );
+    await old.close();
+
+    final upgraded = AppDatabase.forTesting(
+      NativeDatabase(file),
+      clock: FixedClock(1700000000000),
+    );
+    final purchase = await upgraded
+        .customSelect('SELECT total, revision FROM purchases', readsFrom: {})
+        .getSingle();
+    expect(purchase.read<int>('total'), 500);
+    expect(purchase.read<int>('revision'), 0);
+    final revisions = await upgraded
+        .customSelect('SELECT COUNT(*) AS n FROM purchase_revisions',
+            readsFrom: {})
+        .getSingle();
+    expect(revisions.read<int>('n'), 0);
     await upgraded.close();
   });
 }

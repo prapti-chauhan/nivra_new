@@ -63,4 +63,85 @@ void main() {
     // Rs 1,000 already owed, stored negative under the one global sign rule.
     expect(saved.balance, -100000);
   });
+  Future<void> openAt(WidgetTester tester, String location) async {
+    final router = container.read(routerProvider);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(theme: NivraTheme.light(), routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    router.go(location);
+    await tester.pumpAndSettle();
+  }
+
+  Future<(String supplierId, String itemId, String purchaseId)> aPurchase({
+    int amountPaid = 0,
+  }) async {
+    final dao = PurchaseDao(db);
+    final supplier = await dao.createSupplier(userId: user.id, name: 'Verma');
+    final item = await InventoryDao(db).createItem(
+      userId: user.id,
+      name: 'bolt',
+      salePrice: 2500,
+      purchasePrice: 1000,
+    );
+    final purchase = await dao.savePurchase(
+      userId: user.id,
+      supplierId: supplier,
+      amountPaid: amountPaid,
+      lines: [
+        PurchaseLineDraft(
+          itemId: item,
+          name: 'bolt',
+          unit: 'pcs',
+          qty: 10000,
+          unitCost: 1000,
+        ),
+      ],
+    );
+    return (supplier, item, purchase);
+  }
+
+  testWidgets('a purchase can be edited from its page, and the old figures stay',
+      (tester) async {
+    final (_, item, purchase) = await aPurchase();
+    await openAt(tester, '/purchases/$purchase');
+    expect(find.text('Edited'), findsNothing);
+
+    await tester.tap(find.byTooltip('Edit'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit purchase'), findsOneWidget);
+    expect(find.text('Verma'), findsOneWidget, reason: 'filled in, not blank');
+    expect(find.text('Paid now'), findsNothing,
+        reason: 'payments are not part of correcting a purchase');
+
+    // The quantity field holds "10"; make it 4.
+    await tester.enterText(find.widgetWithText(TextField, '10'), '4');
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+
+    // Back on the page, now marked, with the old version one tap away.
+    expect(find.text('Edited'), findsOneWidget);
+    expect(find.text('Earlier versions'), findsOneWidget);
+    expect(find.text('Version 1 · ₹100'), findsOneWidget);
+
+    expect((await InventoryDao(db).findItem(item))!.stockQty, 4000);
+    final saved = await PurchaseDao(db).findPurchase(purchase);
+    expect(saved!.total, 4000);
+    expect(saved.revision, 1);
+  });
+
+  testWidgets('once money has been paid the supplier cannot be changed',
+      (tester) async {
+    final (_, _, purchase) = await aPurchase(amountPaid: 2500);
+    await openAt(tester, '/purchases/$purchase/edit');
+
+    expect(find.textContaining('this supplier'), findsOneWidget);
+    await tester.tap(find.text('Verma'));
+    await tester.pumpAndSettle();
+    expect(find.text('Search suppliers'), findsNothing,
+        reason: 'the supplier picker does not open');
+  });
 }
