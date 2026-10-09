@@ -22,7 +22,16 @@ class BillsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bills'),
-        actions: [SyncIndicator(onTap: () => context.push('/sync'))],
+        actions: [
+          // Straight to a new expense: tea, a repair and the rent are paid at
+          // the counter, and the form is otherwise four screens away.
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            tooltip: 'Add expense',
+            onPressed: () => context.push('/reports/money/new/expense'),
+          ),
+          SyncIndicator(onTap: () => context.push('/sync')),
+        ],
       ),
       body: Column(
         children: [

@@ -33,6 +33,7 @@ class _MoneyEntryEditorScreenState
   final _note = TextEditingController();
 
   MoneyMethod _method = MoneyMethod.cash;
+  bool _methodTouched = false;
   late DateTime _date;
   MoneyKind? _loadedKind;
   bool _loaded = false;
@@ -47,6 +48,15 @@ class _MoneyEntryEditorScreenState
     _date = DateTime.fromMillisecondsSinceEpoch(
       ref.read(databaseProvider).clock.nowMillis(),
     );
+    if (_isNew) _openOnLastMethod();
+  }
+
+  /// A new entry opens on however he paid last time. If he has already chosen
+  /// by the time the lookup returns, his choice stands.
+  Future<void> _openOnLastMethod() async {
+    final last = await ref.read(moneyDaoProvider).lastMethodFor(_kind);
+    if (!mounted || _methodTouched || last == null) return;
+    setState(() => _method = last);
   }
 
   @override
@@ -202,7 +212,10 @@ class _MoneyEntryEditorScreenState
             ButtonSegment(value: m, label: Text(m.label)),
         ],
         selected: {_method},
-        onSelectionChanged: (s) => setState(() => _method = s.first),
+        onSelectionChanged: (s) => setState(() {
+          _methodTouched = true;
+          _method = s.first;
+        }),
       );
 
   String _dateLabel() {

@@ -2411,6 +2411,20 @@ class MoneyDao extends DatabaseAccessor<AppDatabase> with _$MoneyDaoMixin {
         );
   }
 
+  /// How he paid for the last entry of [kind], or null if there is none yet.
+  /// Someone who pays the shop's bills from the bank does it most of the time,
+  /// so the form opens on that instead of making him switch every time.
+  Future<MoneyMethod?> lastMethodFor(MoneyKind kind) async {
+    final row = await customSelect(
+      'SELECT method FROM money_entries '
+      'WHERE kind = ? AND deleted_at IS NULL '
+      'ORDER BY occurred_at DESC, created_at DESC LIMIT 1',
+      variables: [Variable<String>(kind.wire)],
+      readsFrom: {moneyEntries},
+    ).getSingleOrNull();
+    return row == null ? null : MoneyMethod.fromWire(row.read<String>('method'));
+  }
+
   /// What is in the till and the bank right now: a sum over the ledger, so it
   /// agrees with every other figure by construction.
   Future<int> balanceOf(MoneyMethod method) async {

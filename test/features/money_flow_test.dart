@@ -235,4 +235,66 @@ void main() {
     expect(find.text('Cash in hand'), findsOneWidget);
     expect(find.text('Bank / UPI'), findsOneWidget);
   });
+  testWidgets('the form opens on how he paid last time', (tester) async {
+    await MoneyDao(db).addEntry(
+      userId: user.id,
+      kind: MoneyKind.expense,
+      amount: 90000,
+      category: 'Rent',
+      method: MoneyMethod.bank,
+    );
+    await openApp(tester, '/reports/money/new/expense');
+
+    await tester.enterText(find.byType(TextField).first, '120');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final entries = await db.select(db.moneyEntries).get();
+    expect(entries.map((e) => e.method), everyElement('bank'),
+        reason: 'no tap on the cash/bank switch was needed');
+    expect(entries, hasLength(2));
+  });
+
+  testWidgets('a choice he makes is not overridden by the last method',
+      (tester) async {
+    await MoneyDao(db).addEntry(
+      userId: user.id,
+      kind: MoneyKind.expense,
+      amount: 90000,
+      category: 'Rent',
+      method: MoneyMethod.bank,
+    );
+    await openApp(tester, '/reports/money/new/expense');
+
+    await tester.tap(find.text('Cash'));
+    await tester.enterText(find.byType(TextField).first, '120');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final newest = (await db.select(db.moneyEntries).get())
+        .firstWhere((e) => e.amount == 12000);
+    expect(newest.method, 'cash');
+  });
+
+  testWidgets('the Bills screen records an expense without leaving it',
+      (tester) async {
+    await openApp(tester, '/bills');
+
+    await tester.tap(find.byTooltip('Add expense'));
+    await tester.pumpAndSettle();
+    expect(find.text('New expense'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, '250');
+    await tester.tap(find.text('Tea & snacks'));
+    await tester.pump();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    // Back where he started, with the expense saved.
+    expect(find.text('New expense'), findsNothing);
+    expect(find.byTooltip('Add expense'), findsOneWidget);
+    final saved = await db.select(db.moneyEntries).getSingle();
+    expect(saved.amount, 25000);
+    expect(saved.category, 'Tea & snacks');
+  });
 }

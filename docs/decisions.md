@@ -744,3 +744,31 @@ already turns into a transient failure and a retry.
 the fifth failed because the fake HTTP response lacked a `request`, which is
 fixed but was not re-run. The change is uncommitted.
 
+
+---
+
+# Slice seven — faster expense entry
+
+The editor already focused the amount and offered recent categories, so the
+cost was in getting there and in re-choosing cash or bank every time. Reaching
+it took Reports, then Cash and bank, then Expense.
+
+## Decided while building
+
+- **An "Add expense" button on the Bills app bar**, one tap from the screen he
+  opens the app on, pushing the existing editor route. Rejected: a quick-add
+  sheet on the Bills screen, which would duplicate the form and its rules.
+- **The form opens on how he paid last time** for that kind of entry, read from
+  the newest non-deleted `money_entries` row. No new setting and no new column,
+  so nothing can disagree with the data. If he taps cash or bank before the
+  lookup returns, his choice wins.
+- **Chips still select rather than save.** A one-tap chip that saves would turn
+  a mis-tap into a recorded expense, and undo for a mis-tap he never meant to
+  make is worse than one extra tap.
+
+## Verified, not asserted
+
+Three new widget tests in `test/features/money_flow_test.dart`: the form
+preselects the last method, a manual choice is not overridden, and an expense
+is saved from the Bills screen and returns to it. `flutter analyze` clean; 267
+offline tests pass. No schema change. Not run on a device.
