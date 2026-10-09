@@ -134,3 +134,5 @@ touch the report period; kept separate per "one slice per commit".)
 
 - Slice 7 done, committed e28ba83. Also fixed a stray typo (`broadc ast`) in the user's uncommitted auth_repository.dart edit that stopped the project compiling.
 - Slice 8 code, tests and schema_v5.sql written. Live test written, NOT run (SQL not applied).
+- Slice 8 committed 98bdbb9.
+- Slice 9 done: ReportSpan + shared PeriodBar with Custom chip.

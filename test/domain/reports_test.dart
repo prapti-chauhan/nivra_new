@@ -34,6 +34,119 @@ BillProfit bill({
     );
 
 void main() {
+  group('a span picked by hand', () {
+    final now = DateTime(2026, 10, 7, 15, 30);
+
+    test('includes both its first and its last day', () {
+      final r = ReportSpan.custom(
+        firstDay: DateTime(2026, 10, 5),
+        lastDay: DateTime(2026, 10, 18),
+      ).rangeAt(now);
+      expect(r.contains(ms(DateTime(2026, 10, 5))), isTrue);
+      expect(r.contains(ms(DateTime(2026, 10, 18, 23, 59, 59))), isTrue);
+      expect(r.contains(ms(DateTime(2026, 10, 4, 23, 59, 59))), isFalse);
+      expect(r.contains(ms(DateTime(2026, 10, 19))), isFalse);
+    });
+
+    test('ignores the time of day it is built from', () {
+      final r = ReportSpan.custom(
+        firstDay: DateTime(2026, 10, 5, 18, 45),
+        lastDay: DateTime(2026, 10, 5, 3, 10),
+      ).rangeAt(now);
+      expect(r.fromMillis, ms(DateTime(2026, 10, 5)));
+      expect(r.toMillis, ms(DateTime(2026, 10, 6)));
+    });
+
+    test('a single day is a valid span', () {
+      final span = ReportSpan.custom(
+        firstDay: DateTime(2026, 10, 5),
+        lastDay: DateTime(2026, 10, 5),
+      );
+      expect(span.label, '5 Oct 2026');
+    });
+
+    test('ending before it starts is refused, not swapped', () {
+      expect(
+        () => ReportSpan.custom(
+          firstDay: DateTime(2026, 10, 18),
+          lastDay: DateTime(2026, 10, 5),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('the last day of a month and of a year rolls over cleanly', () {
+      final month = ReportSpan.custom(
+        firstDay: DateTime(2026, 10, 1),
+        lastDay: DateTime(2026, 10, 31),
+      ).rangeAt(now);
+      expect(month.toMillis, ms(DateTime(2026, 11, 1)));
+      final year = ReportSpan.custom(
+        firstDay: DateTime(2026, 12, 25),
+        lastDay: DateTime(2026, 12, 31),
+      ).rangeAt(now);
+      expect(year.toMillis, ms(DateTime(2027, 1, 1)));
+    });
+
+    test('the same span as a named period gives the same range', () {
+      final named = rangeFor(ReportPeriod.thisMonth, now);
+      final byHand = ReportSpan.custom(
+        firstDay: DateTime(2026, 10, 1),
+        lastDay: DateTime(2026, 10, 31),
+      ).rangeAt(now);
+      expect(byHand.fromMillis, named.fromMillis);
+      expect(byHand.toMillis, named.toMillis);
+    });
+
+    test('a named period still resolves through the span', () {
+      const span = ReportSpan.preset(ReportPeriod.today);
+      expect(span.isCustom, isFalse);
+      expect(span.label, 'Today');
+      expect(span.inSentence, 'today');
+      expect(span.rangeAt(now).fromMillis, ms(DateTime(2026, 10, 7)));
+    });
+
+    test('labels read as dates, with the year once unless it changes', () {
+      expect(
+        ReportSpan.custom(
+          firstDay: DateTime(2026, 10, 5),
+          lastDay: DateTime(2026, 10, 18),
+        ).label,
+        '5 Oct - 18 Oct 2026',
+      );
+      expect(
+        ReportSpan.custom(
+          firstDay: DateTime(2025, 12, 28),
+          lastDay: DateTime(2026, 1, 3),
+        ).label,
+        '28 Dec 2025 - 3 Jan 2026',
+      );
+      // Dates keep their capitals in a sentence.
+      expect(
+        ReportSpan.custom(
+          firstDay: DateTime(2026, 10, 5),
+          lastDay: DateTime(2026, 10, 18),
+        ).inSentence,
+        '5 Oct - 18 Oct 2026',
+      );
+    });
+
+    test('equal spans are equal', () {
+      expect(
+        ReportSpan.custom(
+          firstDay: DateTime(2026, 10, 5, 9),
+          lastDay: DateTime(2026, 10, 6),
+        ),
+        ReportSpan.custom(
+          firstDay: DateTime(2026, 10, 5),
+          lastDay: DateTime(2026, 10, 6, 22),
+        ),
+      );
+      expect(const ReportSpan.preset(ReportPeriod.today),
+          isNot(const ReportSpan.preset(ReportPeriod.thisWeek)));
+    });
+  });
+
   group('periods', () {
     // Wednesday 7 October 2026, mid-afternoon.
     final now = DateTime(2026, 10, 7, 15, 30);

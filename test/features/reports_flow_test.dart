@@ -232,4 +232,65 @@ void main() {
     final line = await db.select(db.billLines).getSingle();
     expect(line.unitCost, 0);
   });
+  testWidgets('a custom range picked from the calendar filters the report',
+      (tester) async {
+    await BillingDao(db).updateProfile(userId: user.id, invoicePrefix: 'INV-');
+    final itemId = await InventoryDao(db).createItem(
+      userId: user.id,
+      name: 'bolt',
+      salePrice: 2500,
+      purchasePrice: 1800,
+      openingStock: 100000,
+    );
+    Future<void> sell(DateTime when) => BillingDao(db).saveBill(
+          userId: user.id,
+          occurredAt: when.millisecondsSinceEpoch,
+          lines: [
+            BillLineDraft(
+              itemId: itemId,
+              name: 'bolt',
+              unit: 'pcs',
+              qty: 4000,
+              unitPrice: 2500,
+              unitCost: 1800,
+            ),
+          ],
+        );
+    await sell(DateTime(2026, 10, 2, 11)); // inside the range
+    await sell(DateTime(2026, 10, 3, 18)); // the last day, in the evening
+    await sell(DateTime(2026, 10, 4, 9)); // just outside
+    await sell(DateTime(2026, 10, 7, 10)); // today
+
+    await openApp(tester, '/reports/sales');
+    expect(find.text('INV-4'), findsOneWidget, reason: 'today is shown first');
+    expect(find.text('INV-1'), findsNothing);
+
+    await tester.tap(find.text('Custom'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2'));
+    await tester.pump();
+    await tester.tap(find.text('3'));
+    await tester.pump();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    // The chip now says what is being shown, and the list agrees with it.
+    expect(find.text('2 Oct - 3 Oct 2026'), findsWidgets);
+    expect(find.text('INV-1'), findsOneWidget);
+    expect(find.text('INV-2'), findsOneWidget,
+        reason: 'the evening of the last day is still in');
+    expect(find.text('INV-3'), findsNothing);
+    expect(find.text('INV-4'), findsNothing);
+  });
+
+  testWidgets('cancelling the calendar keeps the span he had', (tester) async {
+    await openApp(tester, '/reports/sales');
+    await tester.tap(find.text('Custom'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Custom'), findsOneWidget);
+    expect(find.text('No bills today.'), findsOneWidget);
+  });
 }

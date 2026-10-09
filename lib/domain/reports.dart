@@ -57,6 +57,92 @@ DateRange rangeFor(ReportPeriod period, DateTime now) {
   return DateRange(from.millisecondsSinceEpoch, to.millisecondsSinceEpoch);
 }
 
+/// What the reports are looking at: one of the named periods, or a span he
+/// picked by hand.
+///
+/// A custom span is whole days, first to last inclusive — "5 to 18 October"
+/// means both of those days are in — because that is how it is said and how it
+/// is picked on a calendar. [rangeAt] turns it into the half-open range every
+/// query uses.
+class ReportSpan {
+  const ReportSpan.preset(ReportPeriod this.period)
+    : firstDay = null,
+      lastDay = null;
+
+  /// Only the date part of each argument is used. Throws [ArgumentError] when
+  /// [lastDay] is before [firstDay], rather than quietly swapping them and
+  /// showing numbers for a span he did not ask for.
+  ReportSpan.custom({required DateTime firstDay, required DateTime lastDay})
+    : period = null,
+      firstDay = DateTime(firstDay.year, firstDay.month, firstDay.day),
+      lastDay = DateTime(lastDay.year, lastDay.month, lastDay.day) {
+    if (this.lastDay!.isBefore(this.firstDay!)) {
+      throw ArgumentError('A span cannot end before it starts');
+    }
+  }
+
+  /// Null for a custom span.
+  final ReportPeriod? period;
+  final DateTime? firstDay;
+  final DateTime? lastDay;
+
+  bool get isCustom => period == null;
+
+  /// "Today", "This month", or "5 Oct - 18 Oct 2026" for a custom span.
+  String get label {
+    final p = period;
+    if (p != null) return p.label;
+    final a = firstDay!;
+    final b = lastDay!;
+    if (a == b) return '${a.day} ${_months[a.month - 1]} ${a.year}';
+    final start = a.year == b.year
+        ? '${a.day} ${_months[a.month - 1]}'
+        : '${a.day} ${_months[a.month - 1]} ${a.year}';
+    return '$start - ${b.day} ${_months[b.month - 1]} ${b.year}';
+  }
+
+  /// For the middle of a sentence: "No bills this month", "No bills 5 Oct -
+  /// 18 Oct 2026". Dates keep their capitals.
+  String get inSentence => isCustom ? label : label.toLowerCase();
+
+  DateRange rangeAt(DateTime now) {
+    final p = period;
+    if (p != null) return rangeFor(p, now);
+    final end = lastDay!;
+    return DateRange(
+      firstDay!.millisecondsSinceEpoch,
+      // The day after, built from its parts so a month end or a clock change
+      // cannot make the last day 23 or 25 hours long.
+      DateTime(end.year, end.month, end.day + 1).millisecondsSinceEpoch,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReportSpan &&
+      other.period == period &&
+      other.firstDay == firstDay &&
+      other.lastDay == lastDay;
+
+  @override
+  int get hashCode => Object.hash(period, firstDay, lastDay);
+
+  static const _months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+}
+
 /// One line of a bill as profit sees it.
 class ProfitLine {
   const ProfitLine({
@@ -238,10 +324,10 @@ class ReorderEntry {
   bool get isOut => qtyThousandths <= 0;
 
   int? get daysLeft => daysOfStockLeft(
-        qtyThousandths: qtyThousandths,
-        soldInWindowThousandths: soldInWindowThousandths,
-        windowDays: windowDays,
-      );
+    qtyThousandths: qtyThousandths,
+    soldInWindowThousandths: soldInWindowThousandths,
+    windowDays: windowDays,
+  );
 }
 
 /// Most urgent first: out of stock, then fewest days left, then — for items

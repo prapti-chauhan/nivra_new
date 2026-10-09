@@ -826,3 +826,42 @@ device` in `test/integration/supabase_sync_test.dart` is written and has not
 been run; it fails until the SQL is applied. Until then, a device that corrects
 a cost will see its push rejected for that table (a permanent failure, shown as
 a sync problem) because Postgres lacks the columns.
+
+---
+
+# Slice nine — a custom date range on reports
+
+## Decided while building
+
+- **A `ReportSpan` in the pure domain layer**, either one of the named periods
+  or a custom first and last day, instead of adding a `custom` value to the
+  `ReportPeriod` enum. The enum is iterated to draw the chips, and a `custom`
+  entry would have carried no dates. `rangeFor` is unchanged and a named span
+  delegates to it, so every existing boundary test still describes the same code.
+- **The last day is inclusive.** "5 to 18 October" includes the evening of the
+  18th. The span becomes the same half-open range every query already uses, with
+  the end built as local midnight of the next day from its parts, so a month end
+  or a clock change cannot make a day 23 or 25 hours.
+- **A span that ends before it starts is refused with an error**, not swapped.
+  The calendar cannot produce one, so this only guards callers; showing numbers
+  for a span he did not ask for would be worse than failing.
+- **One shared chip bar.** The overview had its own copy of the chips; it now
+  uses `PeriodBar`, so the custom chip exists once. The chip reads "Custom" until
+  a range is picked and then shows the range, so what is on screen is always
+  stated.
+- **The calendar stops at today and the picker opens on the span he was
+  already looking at**, trimmed to days that have happened, because
+  `showDateRangePicker` rejects a range reaching past its last day and "This
+  week" reaches to Sunday. Five years back is the earliest day offered.
+- Cancelling the calendar keeps the previous span.
+- The period shared by all reports is still one provider, so the P&L cannot mix
+  two spans.
+
+## Verified, not asserted
+
+Nine domain tests for the span (inclusive ends, time of day ignored, single day,
+month and year rollover, equal to the named month, reversed span refused, labels,
+equality) and two widget tests through the real calendar: a range picked there
+filters sales to the bills inside it, including one rung up in the evening of the
+last day and excluding the day after; cancelling keeps the span. No schema
+change. Not run on a device.

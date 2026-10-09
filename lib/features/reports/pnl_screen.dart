@@ -104,10 +104,10 @@ class PnlScreen extends ConsumerWidget {
             ),
           ),
           const Divider(height: 1),
-          _Heading('Where the money went (${period.label.toLowerCase()})'),
+          _Heading('Where the money went (${period.inSentence})'),
           if (byCategory.isEmpty)
             _Empty(
-              'No expenses ${period.label.toLowerCase()}.',
+              'No expenses ${period.inSentence}.',
               action: TextButton(
                 onPressed: () => context.push('/reports/money/new/expense'),
                 child: const Text('Add one'),

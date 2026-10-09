@@ -283,13 +283,16 @@ final reportQueriesProvider = Provider<ReportQueries>(
 /// choosing "This month" once means the profit screen agrees with the sales
 /// screen it was opened from.
 final reportPeriodProvider =
-    NotifierProvider<ReportPeriodChoice, ReportPeriod>(ReportPeriodChoice.new);
+    NotifierProvider<ReportPeriodChoice, ReportSpan>(ReportPeriodChoice.new);
 
-class ReportPeriodChoice extends Notifier<ReportPeriod> {
+class ReportPeriodChoice extends Notifier<ReportSpan> {
   @override
-  ReportPeriod build() => ReportPeriod.today;
+  ReportSpan build() => const ReportSpan.preset(ReportPeriod.today);
 
-  void choose(ReportPeriod period) => state = period;
+  void choose(ReportPeriod period) => state = ReportSpan.preset(period);
+
+  void chooseCustom({required DateTime firstDay, required DateTime lastDay}) =>
+      state = ReportSpan.custom(firstDay: firstDay, lastDay: lastDay);
 }
 
 /// "Now" always comes from the database's clock, never `DateTime.now()`, so a
@@ -302,8 +305,8 @@ DateTime _now(Ref ref) => DateTime.fromMillisecondsSinceEpoch(
 /// the profit screen are two views of this one list, which is what guarantees
 /// they cannot disagree.
 final billProfitsProvider = StreamProvider<List<BillProfit>>((ref) {
-  final period = ref.watch(reportPeriodProvider);
-  final range = rangeFor(period, _now(ref));
+  final span = ref.watch(reportPeriodProvider);
+  final range = span.rangeAt(_now(ref));
   return ref.watch(reportQueriesProvider).watchBillProfits(range);
 });
 
@@ -318,8 +321,8 @@ final moneyDaoProvider = Provider<MoneyDao>(
 /// Expenses, other income and transfers in the chosen period. Shares the
 /// period with sales and profit so the P&L cannot mix two different spans.
 final moneyEntriesProvider = StreamProvider<List<MoneyEntry>>((ref) {
-  final period = ref.watch(reportPeriodProvider);
-  final range = rangeFor(period, _now(ref));
+  final span = ref.watch(reportPeriodProvider);
+  final range = span.rangeAt(_now(ref));
   return ref.watch(reportQueriesProvider).watchMoneyEntries(range);
 });
 

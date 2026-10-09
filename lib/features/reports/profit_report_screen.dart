@@ -68,7 +68,7 @@ class ProfitReportScreen extends ConsumerWidget {
             child: bills.isEmpty
                 ? Center(
                     child: Text(
-                      'No bills ${period.label.toLowerCase()}.',
+                      'No bills ${period.inSentence}.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),

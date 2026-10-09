@@ -19,19 +19,20 @@ class ReportsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final period = ref.watch(reportPeriodProvider);
     final summary = ref.watch(profitSummaryProvider);
     final owed = ref.watch(totalReceivableProvider).value ?? 0;
     final payable = ref.watch(totalPayableProvider).value ?? 0;
     final low = ref.watch(reorderProvider).value ?? const [];
     final pnl = ref.watch(profitAndLossProvider);
-    final position = ref.watch(cashPositionProvider).value ??
+    final position =
+        ref.watch(cashPositionProvider).value ??
         const CashPosition(cashPaise: 0, bankPaise: 0);
     final items = ref.watch(stockItemsProvider).value ?? const [];
 
     final stockValue = items.fold<int>(
       0,
-      (sum, i) => sum +
+      (sum, i) =>
+          sum +
           stockValuePaise(
             qtyThousandths: i.stockQty,
             unitCostPaise: i.purchasePrice,
@@ -46,23 +47,7 @@ class ReportsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final p in ReportPeriod.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(p.label),
-                      selected: p == period,
-                      onSelected: (_) =>
-                          ref.read(reportPeriodProvider.notifier).choose(p),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+          const PeriodBar(padding: EdgeInsets.zero),
           const SizedBox(height: 12),
           _Tile(
             label: 'Sales',
@@ -82,8 +67,8 @@ class ReportsScreen extends ConsumerWidget {
             // zero is the one way this screen could mislead him.
             warning: summary.hasUnknownCost
                 ? '${summary.unknownCostLines} '
-                    '${summary.unknownCostLines == 1 ? 'line has' : 'lines have'}'
-                    ' no cost on record, so this is more than you really made'
+                      '${summary.unknownCostLines == 1 ? 'line has' : 'lines have'}'
+                      ' no cost on record, so this is more than you really made'
                 : null,
             onTap: () => context.push('/reports/profit'),
           ),
@@ -109,7 +94,8 @@ class ReportsScreen extends ConsumerWidget {
           _Tile(
             label: 'Cash and bank',
             value: Money.format(position.totalPaise),
-            detail: 'cash ${Money.format(position.cashPaise)}'
+            detail:
+                'cash ${Money.format(position.cashPaise)}'
                 ' · bank ${Money.format(position.bankPaise)}',
             onTap: () => context.push('/reports/money'),
           ),
@@ -135,8 +121,8 @@ class ReportsScreen extends ConsumerWidget {
             detail: low.isEmpty
                 ? null
                 : low.length == 1
-                    ? 'item to reorder'
-                    : 'items to reorder',
+                ? 'item to reorder'
+                : 'items to reorder',
             onTap: () => context.push('/reports/reorder'),
           ),
         ],
@@ -194,7 +180,9 @@ class _Tile extends StatelessWidget {
                   ),
                   Text(
                     value,
-                    style: theme.textTheme.moneyLarge.copyWith(color: valueColor),
+                    style: theme.textTheme.moneyLarge.copyWith(
+                      color: valueColor,
+                    ),
                   ),
                   const SizedBox(width: 4),
                   Icon(
@@ -233,17 +221,23 @@ class _Tile extends StatelessWidget {
   }
 }
 
-/// The period chips again, for the screens a tile opens into, so he can change
-/// the span without backing out.
+/// The period chips, shared by the overview and the screens a tile opens into,
+/// so he can change the span without backing out. The last chip is a calendar:
+/// it reads "Custom" until he has picked a range, then shows the range.
 class PeriodBar extends ConsumerWidget {
-  const PeriodBar({super.key});
+  const PeriodBar({
+    super.key,
+    this.padding = const EdgeInsets.fromLTRB(16, 4, 16, 8),
+  });
+
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final period = ref.watch(reportPeriodProvider);
+    final span = ref.watch(reportPeriodProvider);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: padding,
       child: Row(
         children: [
           for (final p in ReportPeriod.values)
@@ -251,14 +245,55 @@ class PeriodBar extends ConsumerWidget {
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
                 label: Text(p.label),
-                selected: p == period,
+                selected: span.period == p,
                 onSelected: (_) =>
                     ref.read(reportPeriodProvider.notifier).choose(p),
               ),
             ),
+          ChoiceChip(
+            avatar: const Icon(Icons.calendar_month_outlined, size: 18),
+            label: Text(span.isCustom ? span.label : 'Custom'),
+            selected: span.isCustom,
+            onSelected: (_) => _pickRange(context, ref, span),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _pickRange(
+    BuildContext context,
+    WidgetRef ref,
+    ReportSpan current,
+  ) async {
+    final clock = ref.read(databaseProvider).clock;
+    final now = DateTime.fromMillisecondsSinceEpoch(clock.nowMillis());
+    final today = DateTime(now.year, now.month, now.day);
+    final shown = current.rangeAt(now);
+    // Start the picker on the span he is looking at, trimmed to days that have
+    // happened: the picker rejects a range reaching past its last day, and
+    // "this week" reaches to Sunday.
+    DateTime day(int millis) {
+      final d = DateTime.fromMillisecondsSinceEpoch(millis);
+      final only = DateTime(d.year, d.month, d.day);
+      return only.isAfter(today) ? today : only;
+    }
+
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(today.year - 5),
+      lastDate: today,
+      initialDateRange: DateTimeRange(
+        start: day(shown.fromMillis),
+        // The range is half-open; the picker wants the last day inside it.
+        end: day(shown.toMillis - 1),
+      ),
+      helpText: 'Pick the first and last day',
+    );
+    if (picked == null) return;
+    ref
+        .read(reportPeriodProvider.notifier)
+        .chooseCustom(firstDay: picked.start, lastDay: picked.end);
   }
 }
 
