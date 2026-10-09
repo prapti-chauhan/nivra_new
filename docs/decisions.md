@@ -945,3 +945,87 @@ live test `an edited purchase, and the version it replaced, reach a second
 device` is written and has not been run; it fails until the SQL is applied.
 Until then a device that edits a purchase will have the push of that purchase
 and its revision rejected. Not run on a device.
+
+---
+
+# Slice eleven — the shop logo, synced
+
+Chosen from the gallery or the camera, printed at the top of every bill, and
+the same on every phone signed in to the shop.
+
+## Decided while building
+
+- **The image lives in a private Supabase Storage bucket, `logos`, at
+  `<user id>/logo`, overwritten in place.** The profile row carries only
+  `logo_version`. Rejected: base64 in a text column, which would ride along in
+  every pull of the profile row; and a new object name per upload, which leaves
+  orphans to clean up.
+- **`logo_version`, not a path, is how another phone knows its copy is stale.**
+  0 means no logo; each new choice bumps it. Three device-local columns
+  (`logo_path`, `logo_cached_version`, `logo_uploaded_version`) are never
+  pushed: a file path on one phone means nothing on another.
+- **The profile never advertises a version Storage does not have.** A pushed
+  profile carries the version last uploaded, not the one just chosen, and the
+  image is uploaded before the profile row in the same cycle. Otherwise a second
+  phone would be told about an image that is not there and cache an older one
+  under the new number.
+- **Pulling a profile does not overwrite a logo that is waiting to upload.**
+  The profile this phone just pushed comes straight back down in the same
+  cycle, advertising the older version; taking it would silently discard the
+  logo just chosen. This was found by a test (the retry test failed), not by
+  reasoning, and `upsertPulledProfile` now keeps a local version that is ahead
+  of what was uploaded.
+- **A logo problem never blocks the rest of sync.** Upload and download errors
+  are written to the sync log and the cycle carries on, so a missing bucket
+  cannot stop bills, stock or money from syncing.
+- **Bytes are trusted by their first bytes, not their name or content type.**
+  Only a real JPEG or PNG, at most 1 MB, is accepted, on pick, on upload and on
+  download. The bucket enforces the same size and types, since the app is not
+  the only thing that can talk to it.
+- **A logo that cannot be drawn never stops a bill.** The renderer retries
+  without the logo if embedding it fails, so a corrupt file cannot stop Ramesh
+  handing a customer their bill.
+- **The picture is scaled down on the phone by the picker** (512 px, quality 85)
+  before anything else sees it.
+- **"Remove" is shown whenever a logo is set**, not only when its file can be
+  read, so a logo whose file has gone can still be replaced.
+- **Removing deletes the object from Storage** (the one hard delete in the
+  system, since leaving a removed logo on a server defeats removing it), and
+  signing out deletes the local file.
+- No new Android permission: the gallery uses the system photo picker and the
+  camera is an intent to the camera app. iOS gets the two usage strings.
+
+## Schema
+
+`supabase/schema_v7.sql`: `business_profiles.logo_version`, the `logos` bucket
+(private, 1 MB, JPEG and PNG only) and four storage policies keyed on the first
+folder of the object path being the caller's own user id. Drift schema 7.
+
+## Verified, not asserted
+
+Offline: `flutter analyze` clean; 343 tests pass. Sync is tested end to end
+between two simulated phones sharing a fake server and fake storage: a logo
+arrives on the second phone, a replacement replaces the file, removal reaches
+the server and the other phone, a download is not mistaken for a local edit, a
+failed or retried upload, a logo announced but missing, bytes that are not a
+picture, a missing local file, and sign-out deleting the file. Also: JPEG/PNG
+sniffing, PDF rendering with a real PNG, a file that starts like a JPEG but is
+not, random bytes, a v6 -> v7 migration, and seven widget tests on the shop
+screen with a fake picker.
+
+**Not verified:**
+- `schema_v7.sql` has not been applied. The live test `a logo chosen on one
+  device reaches another, and nobody else can read it` is written (including
+  that a second user cannot read or overwrite the logo and that the bucket
+  refuses a text file) and has not been run. Until the SQL is applied a logo is
+  kept on the phone it was chosen on and the sync log shows the rejected upload.
+- **Not run on a device or emulator.** The picker, camera, permissions and the
+  real `supabase_flutter` storage calls have only been exercised through fakes.
+  I wrote the storage calls against the installed `storage_client` 2.8.0 source,
+  but they have not been executed.
+- **Photo metadata is not stripped.** `image_picker` re-encodes a resized image
+  but may carry EXIF (including location from a camera photo) into the file
+  that is uploaded and embedded in PDFs. I did not strip it because removing the
+  orientation tag could rotate the logo, and could not check either way without a
+  device. The shop's address is already on the bill, so the exposure is small;
+  worth a look on a real photo.

@@ -1,6 +1,10 @@
 @Tags(['integration'])
 library;
 
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:drift/drift.dart' show Variable, driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,9 +12,11 @@ import 'package:nivra_new/data/db/database.dart';
 import 'package:nivra_new/data/remote/supabase_config.dart';
 import 'package:nivra_new/data/remote/sync_api.dart';
 import 'package:nivra_new/data/sync/connectivity_monitor.dart';
+import 'package:nivra_new/data/sync/logo_sync.dart';
 import 'package:nivra_new/data/sync/sync_service.dart';
 import 'package:nivra_new/domain/billing.dart';
 import 'package:nivra_new/domain/cashbook.dart';
+import 'package:nivra_new/domain/logo.dart';
 import 'package:nivra_new/domain/stock.dart';
 import 'package:nivra_new/domain/sync_status.dart';
 import 'package:supabase/supabase.dart';
@@ -848,6 +854,115 @@ void main() {
     await syncTwo.stop();
     await one.close();
     await two.close();
+  }, timeout: const Timeout(Duration(minutes: 3)));
+  // Needs supabase/schema_v7.sql applied to the project first (the column and
+  // the `logos` bucket with its policies). Written but NOT yet run: until that
+  // SQL is applied it fails by design.
+  test('a logo chosen on one device reaches another, and nobody else can read it',
+      () async {
+    final png = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    );
+    final dirOne = await Directory.systemTemp.createTemp('nivra_it_logo_one');
+    final dirTwo = await Directory.systemTemp.createTemp('nivra_it_logo_two');
+
+    SyncService service(AppDatabase db, Directory dir) => SyncService(
+          db: db,
+          connectivity: FakeConnectivityMonitor(),
+          api: SupabaseSyncApi(client),
+          logoSync: LogoSync(
+            db: db,
+            storage: SupabaseLogoStorage(client),
+            files: LogoFiles(() async => dir),
+          ),
+        );
+
+    final one = AppDatabase.forTesting(NativeDatabase.memory());
+    final syncOne = service(one, dirOne);
+    final path = await LogoFiles(() async => dirOne).write(png, LogoFormat.png);
+    await BillingDao(one).updateProfile(userId: userId, shopName: 'IT Logo Shop');
+    await BillingDao(one).setLogo(userId: userId, path: path);
+
+    await syncOne.start(userId);
+    await syncOne.syncNow();
+    expect(syncOne.currentStatus.phase, SyncPhase.synced,
+        reason: 'first push: ${syncOne.currentStatus.message}');
+    final logs = await one.select(one.syncLogs).get();
+    expect(logs.where((l) => l.entity == 'logo' && !l.ok), isEmpty,
+        reason: 'the upload should not have been rejected: '
+            '${logs.where((l) => l.entity == 'logo' && !l.ok).map((l) => l.detail)}');
+
+    final profileOne = await BillingDao(one).ensureProfile(userId);
+    expect(profileOne.logoUploadedVersion, 1);
+
+    // --- device two: empty database --------------------------------------
+    final two = AppDatabase.forTesting(NativeDatabase.memory());
+    final syncTwo = service(two, dirTwo);
+    await syncTwo.start(userId);
+    await syncTwo.syncNow();
+
+    final profileTwo = await BillingDao(two).ensureProfile(userId);
+    expect(profileTwo.shopName, 'IT Logo Shop');
+    expect(profileTwo.logoVersion, 1);
+    expect(profileTwo.logoPath, isNotNull, reason: 'the logo should have arrived');
+    expect(await LogoFiles(() async => dirTwo).read(profileTwo.logoPath), png);
+
+    // --- somebody else -----------------------------------------------------
+    final other = SupabaseClient(
+      SupabaseConfig.url,
+      SupabaseConfig.publishableKey,
+      authOptions: const AuthClientOptions(authFlowType: AuthFlowType.implicit),
+    );
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final res = await other.auth.signUp(
+      email: 'nivra-it-other-$stamp@example.com',
+      password: 'integration-pass-123',
+    );
+    expect(res.session, isNotNull);
+
+    final intruder = SupabaseLogoStorage(other);
+    // Reading another user's folder finds nothing or is refused; either way the
+    // bytes do not come back.
+    Object? readOutcome;
+    try {
+      readOutcome = await intruder.download(userId);
+    } on Object catch (e) {
+      readOutcome = e;
+    }
+    expect(readOutcome is List<int>, isFalse,
+        reason: "another user must not be able to read the shop's logo");
+
+    // Writing into it is refused, and the real logo is still the real logo.
+    await expectLater(
+      intruder.upload(userId, Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, 1]),
+          LogoFormat.jpeg),
+      throwsA(anything),
+    );
+    expect(await SupabaseLogoStorage(client).download(userId), png);
+
+    // Not an image at all: refused by the bucket itself, not only by the app.
+    await expectLater(
+      client.storage.from('logos').uploadBinary(
+            '$userId/notes.txt',
+            Uint8List.fromList(utf8.encode('hello')),
+            fileOptions: const FileOptions(contentType: 'text/plain'),
+          ),
+      throwsA(anything),
+    );
+
+    // Removing it on device one takes it off the server.
+    await BillingDao(one).clearLogo(userId);
+    await syncOne.syncNow();
+    expect(await SupabaseLogoStorage(client).download(userId), isNull);
+
+    await other.auth.signOut();
+    await other.dispose();
+    await syncOne.stop();
+    await syncTwo.stop();
+    await one.close();
+    await two.close();
+    await dirOne.delete(recursive: true);
+    await dirTwo.delete(recursive: true);
   }, timeout: const Timeout(Duration(minutes: 3)));
 }
 

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
+import '../../data/db/database.dart';
 import '../../domain/billing.dart';
+import '../../domain/logo.dart';
+import 'logo_picker.dart';
 
 class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
@@ -116,7 +120,9 @@ class _ShopDetailsScreenState extends ConsumerState<ShopDetailsScreen> {
   Future<void> _save() async {
     final userId = ref.read(currentUserProvider).value?.id;
     if (userId == null) return;
-    await ref.read(billingDaoProvider).updateProfile(
+    await ref
+        .read(billingDaoProvider)
+        .updateProfile(
           userId: userId,
           shopName: _shopName.text.trim(),
           ownerName: _ownerName.text.trim(),
@@ -153,6 +159,8 @@ class _ShopDetailsScreenState extends ConsumerState<ShopDetailsScreen> {
             ),
           ),
           const SizedBox(height: 18),
+          const _LogoSection(),
+          const SizedBox(height: 22),
           TextField(
             controller: _shopName,
             textCapitalization: TextCapitalization.words,
@@ -202,5 +210,153 @@ class _ShopDetailsScreenState extends ConsumerState<ShopDetailsScreen> {
         ),
       ),
     );
+  }
+}
+
+/// The logo on his bills. Saved the moment a picture is chosen rather than with
+/// the form's Save button: it is a file, and a choice he has just made should
+/// not be lost because he left the screen without saving the name.
+class _LogoSection extends ConsumerWidget {
+  const _LogoSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final profile = ref.watch(businessProfileProvider).value;
+    final bytes = ref.watch(logoBytesProvider).value;
+    // Whether a logo is set is a fact about the profile. Whether its file could
+    // be read just now is not: if the file has gone he must still be able to
+    // replace or remove it.
+    final hasLogo = profile?.logoPath != null;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 76,
+          height: 76,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: bytes != null
+              ? Image.memory(
+                  bytes,
+                  fit: BoxFit.contain,
+                  // An undecodable file shows the empty state instead of an
+                  // error box on the shop's own screen.
+                  errorBuilder: (_, _, _) => Icon(
+                    Icons.storefront_outlined,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : Icon(
+                  Icons.storefront_outlined,
+                  size: 32,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Shop logo', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 2),
+              Text(
+                hasLogo
+                    ? 'Printed at the top of every bill.'
+                    : 'Optional. Printed at the top of every bill.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        _pick(context, ref, profile, LogoSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined, size: 18),
+                    label: const Text('Choose picture'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        _pick(context, ref, profile, LogoSource.camera),
+                    icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                    label: const Text('Take photo'),
+                  ),
+                  if (hasLogo)
+                    TextButton(
+                      onPressed: () => _remove(ref, profile),
+                      child: const Text('Remove'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pick(
+    BuildContext context,
+    WidgetRef ref,
+    BusinessProfile? profile,
+    LogoSource source,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final userId = ref.read(currentUserProvider).value?.id;
+    if (userId == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('You are signed out. Sign in to save.')),
+      );
+      return;
+    }
+
+    Uint8List? bytes;
+    try {
+      bytes = await ref.read(logoPickerProvider).pick(source);
+    } on PlatformException {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            source == LogoSource.camera
+                ? 'Could not open the camera. Check the app is allowed to use it.'
+                : 'Could not open your pictures. Check the app is allowed to use them.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (bytes == null) return; // He backed out.
+
+    final problem = logoProblem(bytes);
+    final format = sniffLogoFormat(bytes);
+    if (problem != null || format == null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(problem ?? 'Use a JPEG or PNG picture.')),
+      );
+      return;
+    }
+
+    final files = ref.read(logoFilesProvider);
+    final previous = profile?.logoPath;
+    final path = await files.write(bytes, format);
+    await ref.read(billingDaoProvider).setLogo(userId: userId, path: path);
+    await files.delete(previous);
+  }
+
+  Future<void> _remove(WidgetRef ref, BusinessProfile? profile) async {
+    final userId = ref.read(currentUserProvider).value?.id;
+    if (userId == null) return;
+    final previous = profile?.logoPath;
+    await ref.read(billingDaoProvider).clearLogo(userId);
+    await ref.read(logoFilesProvider).delete(previous);
   }
 }

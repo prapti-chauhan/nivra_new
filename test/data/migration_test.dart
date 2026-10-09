@@ -15,6 +15,7 @@ import '../generated_migrations/schema_v2.dart' as v2;
 import '../generated_migrations/schema_v3.dart' as v3;
 import '../generated_migrations/schema_v4.dart' as v4;
 import '../generated_migrations/schema_v5.dart' as v5;
+import '../generated_migrations/schema_v6.dart' as v6;
 
 /// Ramesh already has the app on his phone with real bills in it. A fresh
 /// install exercises `createAll` and would never touch `onUpgrade`, so without
@@ -29,7 +30,7 @@ void main() {
   test('a v2 database upgrades to the current schema with the expected shape', () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
     await db.close();
   });
 
@@ -104,7 +105,7 @@ void main() {
       connection,
       clock: FixedClock(1700000000000),
     );
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
 
     final dao = PurchaseDao(db);
     final itemId = await InventoryDao(db).createItem(
@@ -136,7 +137,7 @@ void main() {
   test('a v3 database upgrades to the current schema with the expected shape', () async {
     final connection = await verifier.startAt(3);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
     await db.close();
   });
 
@@ -145,7 +146,7 @@ void main() {
     // guarded by `from < N`, and this is what proves they chain.
     final connection = await verifier.startAt(2);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 6);
+    await verifier.migrateAndValidate(db, 7);
     await db.close();
   });
 
@@ -256,6 +257,38 @@ void main() {
             readsFrom: {})
         .getSingle();
     expect(revisions.read<int>('n'), 0);
+    await upgraded.close();
+  });
+  test('a v6 database gains the logo columns, with no logo', () async {
+    final dir = await Directory.systemTemp.createTemp('nivra_migration_v6');
+    final file = File('${dir.path}/nivra.sqlite');
+
+    final old = v6.DatabaseAtV6(NativeDatabase(file));
+    await old.customSelect('SELECT 1').get();
+    await old.customStatement(
+      "INSERT INTO business_profiles (id, user_id, created_at, updated_at, "
+      "is_dirty, shop_name, invoice_prefix, invoice_next_number) "
+      "VALUES ('bp1', 'u1', 1, 1, 0, 'Sharma Hardware', 'INV-', 12)",
+    );
+    await old.close();
+
+    final upgraded = AppDatabase.forTesting(
+      NativeDatabase(file),
+      clock: FixedClock(1700000000000),
+    );
+    final row = await upgraded
+        .customSelect(
+          'SELECT shop_name, invoice_next_number, logo_path, logo_version, '
+          'logo_cached_version, logo_uploaded_version FROM business_profiles',
+          readsFrom: {},
+        )
+        .getSingle();
+    expect(row.read<String>('shop_name'), 'Sharma Hardware');
+    expect(row.read<int>('invoice_next_number'), 12);
+    expect(row.read<String?>('logo_path'), isNull);
+    expect(row.read<int>('logo_version'), 0);
+    expect(row.read<int>('logo_cached_version'), 0);
+    expect(row.read<int>('logo_uploaded_version'), 0);
     await upgraded.close();
   });
 }

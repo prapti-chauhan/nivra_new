@@ -9,8 +9,8 @@ import '../db/database.dart';
 ///     that are pushed alongside it. Sending it would let a stale server copy
 ///     race the value a pull is about to recompute.
 ///   * `logo_path`, because a filesystem path on one phone means nothing on
-///     another. Syncing the image itself needs Supabase Storage, which is not
-///     in this slice.
+///     another. The image itself travels through Supabase Storage (see
+///     `data/sync/logo_sync.dart`); only `logo_version` rides with the row.
 ///   * `customers.balance` and `bills.amount_paid`, for the same reason as
 ///     `stock_qty`: both are sums of rows that are themselves synced, so a
 ///     fresh install recomputes them rather than trusting a number off the
@@ -112,6 +112,14 @@ class RowMappers {
         'address': row.address,
         'invoice_prefix': row.invoicePrefix,
         'invoice_next_number': row.invoiceNextNumber,
+        // Never a version still waiting to be uploaded: another phone would be
+        // told about an image that is not in Storage yet, and would cache
+        // whatever older image is there under the new version number.
+        'logo_version': row.logoVersion == 0
+            ? 0
+            : (row.logoUploadedVersion < row.logoVersion
+                ? row.logoUploadedVersion
+                : row.logoVersion),
       };
 
   static BusinessProfilesCompanion profileFromJson(Map<String, dynamic> json) =>
@@ -128,6 +136,13 @@ class RowMappers {
         address: Value(json['address'] as String?),
         invoicePrefix: Value(json['invoice_prefix'] as String? ?? ''),
         invoiceNextNumber: Value(_int(json['invoice_next_number']) ?? 1),
+        logoVersion: Value(_int(json['logo_version']) ?? 0),
+        // Storage has whatever version the server advertises, by definition.
+        // Without this a later local edit of the profile would push an older
+        // number back over it. `logo_path` and the cached version are left
+        // alone: they describe this phone's copy, and a gap between them and
+        // `logo_version` is what makes the next sync fetch the new image.
+        logoUploadedVersion: Value(_int(json['logo_version']) ?? 0),
         isDirty: const Value(false),
       );
 }

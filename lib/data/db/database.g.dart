@@ -1982,6 +1982,41 @@ class $BusinessProfilesTable extends BusinessProfiles
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _logoVersionMeta = const VerificationMeta(
+    'logoVersion',
+  );
+  @override
+  late final GeneratedColumn<int> logoVersion = GeneratedColumn<int>(
+    'logo_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _logoCachedVersionMeta = const VerificationMeta(
+    'logoCachedVersion',
+  );
+  @override
+  late final GeneratedColumn<int> logoCachedVersion = GeneratedColumn<int>(
+    'logo_cached_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _logoUploadedVersionMeta =
+      const VerificationMeta('logoUploadedVersion');
+  @override
+  late final GeneratedColumn<int> logoUploadedVersion = GeneratedColumn<int>(
+    'logo_uploaded_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _invoicePrefixMeta = const VerificationMeta(
     'invoicePrefix',
   );
@@ -2020,6 +2055,9 @@ class $BusinessProfilesTable extends BusinessProfiles
     phone,
     address,
     logoPath,
+    logoVersion,
+    logoCachedVersion,
+    logoUploadedVersion,
     invoicePrefix,
     invoiceNextNumber,
   ];
@@ -2115,6 +2153,33 @@ class $BusinessProfilesTable extends BusinessProfiles
         logoPath.isAcceptableOrUnknown(data['logo_path']!, _logoPathMeta),
       );
     }
+    if (data.containsKey('logo_version')) {
+      context.handle(
+        _logoVersionMeta,
+        logoVersion.isAcceptableOrUnknown(
+          data['logo_version']!,
+          _logoVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('logo_cached_version')) {
+      context.handle(
+        _logoCachedVersionMeta,
+        logoCachedVersion.isAcceptableOrUnknown(
+          data['logo_cached_version']!,
+          _logoCachedVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('logo_uploaded_version')) {
+      context.handle(
+        _logoUploadedVersionMeta,
+        logoUploadedVersion.isAcceptableOrUnknown(
+          data['logo_uploaded_version']!,
+          _logoUploadedVersionMeta,
+        ),
+      );
+    }
     if (data.containsKey('invoice_prefix')) {
       context.handle(
         _invoicePrefixMeta,
@@ -2190,6 +2255,18 @@ class $BusinessProfilesTable extends BusinessProfiles
         DriftSqlType.string,
         data['${effectivePrefix}logo_path'],
       ),
+      logoVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}logo_version'],
+      )!,
+      logoCachedVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}logo_cached_version'],
+      )!,
+      logoUploadedVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}logo_uploaded_version'],
+      )!,
       invoicePrefix: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}invoice_prefix'],
@@ -2222,7 +2299,24 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
   final String? ownerName;
   final String? phone;
   final String? address;
+
+  /// Device-local, never synced: where this phone keeps its copy of the logo.
+  /// A filesystem path on one phone means nothing on another.
   final String? logoPath;
+
+  /// Synced. 0 means no logo; otherwise it is bumped each time a new one is
+  /// chosen. The image itself lives in Supabase Storage at a fixed place per
+  /// user, so this number is how another phone knows its copy is out of date.
+  final int logoVersion;
+
+  /// Device-local: the version of the image held in [logoPath].
+  final int logoCachedVersion;
+
+  /// The newest version known to be in Storage. Set when this phone uploads,
+  /// and when it pulls a version from the server (which means Storage has it).
+  /// The profile only ever advertises this, never a version still waiting to be
+  /// uploaded, so another phone cannot be told about an image that is not there.
+  final int logoUploadedVersion;
   final String invoicePrefix;
   final int invoiceNextNumber;
   const BusinessProfile({
@@ -2238,6 +2332,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
     this.phone,
     this.address,
     this.logoPath,
+    required this.logoVersion,
+    required this.logoCachedVersion,
+    required this.logoUploadedVersion,
     required this.invoicePrefix,
     required this.invoiceNextNumber,
   });
@@ -2268,6 +2365,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
     if (!nullToAbsent || logoPath != null) {
       map['logo_path'] = Variable<String>(logoPath);
     }
+    map['logo_version'] = Variable<int>(logoVersion);
+    map['logo_cached_version'] = Variable<int>(logoCachedVersion);
+    map['logo_uploaded_version'] = Variable<int>(logoUploadedVersion);
     map['invoice_prefix'] = Variable<String>(invoicePrefix);
     map['invoice_next_number'] = Variable<int>(invoiceNextNumber);
     return map;
@@ -2299,6 +2399,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
       logoPath: logoPath == null && nullToAbsent
           ? const Value.absent()
           : Value(logoPath),
+      logoVersion: Value(logoVersion),
+      logoCachedVersion: Value(logoCachedVersion),
+      logoUploadedVersion: Value(logoUploadedVersion),
       invoicePrefix: Value(invoicePrefix),
       invoiceNextNumber: Value(invoiceNextNumber),
     );
@@ -2322,6 +2425,11 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
       phone: serializer.fromJson<String?>(json['phone']),
       address: serializer.fromJson<String?>(json['address']),
       logoPath: serializer.fromJson<String?>(json['logoPath']),
+      logoVersion: serializer.fromJson<int>(json['logoVersion']),
+      logoCachedVersion: serializer.fromJson<int>(json['logoCachedVersion']),
+      logoUploadedVersion: serializer.fromJson<int>(
+        json['logoUploadedVersion'],
+      ),
       invoicePrefix: serializer.fromJson<String>(json['invoicePrefix']),
       invoiceNextNumber: serializer.fromJson<int>(json['invoiceNextNumber']),
     );
@@ -2342,6 +2450,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
       'phone': serializer.toJson<String?>(phone),
       'address': serializer.toJson<String?>(address),
       'logoPath': serializer.toJson<String?>(logoPath),
+      'logoVersion': serializer.toJson<int>(logoVersion),
+      'logoCachedVersion': serializer.toJson<int>(logoCachedVersion),
+      'logoUploadedVersion': serializer.toJson<int>(logoUploadedVersion),
       'invoicePrefix': serializer.toJson<String>(invoicePrefix),
       'invoiceNextNumber': serializer.toJson<int>(invoiceNextNumber),
     };
@@ -2360,6 +2471,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
     Value<String?> phone = const Value.absent(),
     Value<String?> address = const Value.absent(),
     Value<String?> logoPath = const Value.absent(),
+    int? logoVersion,
+    int? logoCachedVersion,
+    int? logoUploadedVersion,
     String? invoicePrefix,
     int? invoiceNextNumber,
   }) => BusinessProfile(
@@ -2377,6 +2491,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
     phone: phone.present ? phone.value : this.phone,
     address: address.present ? address.value : this.address,
     logoPath: logoPath.present ? logoPath.value : this.logoPath,
+    logoVersion: logoVersion ?? this.logoVersion,
+    logoCachedVersion: logoCachedVersion ?? this.logoCachedVersion,
+    logoUploadedVersion: logoUploadedVersion ?? this.logoUploadedVersion,
     invoicePrefix: invoicePrefix ?? this.invoicePrefix,
     invoiceNextNumber: invoiceNextNumber ?? this.invoiceNextNumber,
   );
@@ -2396,6 +2513,15 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
       phone: data.phone.present ? data.phone.value : this.phone,
       address: data.address.present ? data.address.value : this.address,
       logoPath: data.logoPath.present ? data.logoPath.value : this.logoPath,
+      logoVersion: data.logoVersion.present
+          ? data.logoVersion.value
+          : this.logoVersion,
+      logoCachedVersion: data.logoCachedVersion.present
+          ? data.logoCachedVersion.value
+          : this.logoCachedVersion,
+      logoUploadedVersion: data.logoUploadedVersion.present
+          ? data.logoUploadedVersion.value
+          : this.logoUploadedVersion,
       invoicePrefix: data.invoicePrefix.present
           ? data.invoicePrefix.value
           : this.invoicePrefix,
@@ -2420,6 +2546,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
           ..write('phone: $phone, ')
           ..write('address: $address, ')
           ..write('logoPath: $logoPath, ')
+          ..write('logoVersion: $logoVersion, ')
+          ..write('logoCachedVersion: $logoCachedVersion, ')
+          ..write('logoUploadedVersion: $logoUploadedVersion, ')
           ..write('invoicePrefix: $invoicePrefix, ')
           ..write('invoiceNextNumber: $invoiceNextNumber')
           ..write(')'))
@@ -2440,6 +2569,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
     phone,
     address,
     logoPath,
+    logoVersion,
+    logoCachedVersion,
+    logoUploadedVersion,
     invoicePrefix,
     invoiceNextNumber,
   );
@@ -2459,6 +2591,9 @@ class BusinessProfile extends DataClass implements Insertable<BusinessProfile> {
           other.phone == this.phone &&
           other.address == this.address &&
           other.logoPath == this.logoPath &&
+          other.logoVersion == this.logoVersion &&
+          other.logoCachedVersion == this.logoCachedVersion &&
+          other.logoUploadedVersion == this.logoUploadedVersion &&
           other.invoicePrefix == this.invoicePrefix &&
           other.invoiceNextNumber == this.invoiceNextNumber);
 }
@@ -2476,6 +2611,9 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
   final Value<String?> phone;
   final Value<String?> address;
   final Value<String?> logoPath;
+  final Value<int> logoVersion;
+  final Value<int> logoCachedVersion;
+  final Value<int> logoUploadedVersion;
   final Value<String> invoicePrefix;
   final Value<int> invoiceNextNumber;
   final Value<int> rowid;
@@ -2492,6 +2630,9 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
     this.phone = const Value.absent(),
     this.address = const Value.absent(),
     this.logoPath = const Value.absent(),
+    this.logoVersion = const Value.absent(),
+    this.logoCachedVersion = const Value.absent(),
+    this.logoUploadedVersion = const Value.absent(),
     this.invoicePrefix = const Value.absent(),
     this.invoiceNextNumber = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2509,6 +2650,9 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
     this.phone = const Value.absent(),
     this.address = const Value.absent(),
     this.logoPath = const Value.absent(),
+    this.logoVersion = const Value.absent(),
+    this.logoCachedVersion = const Value.absent(),
+    this.logoUploadedVersion = const Value.absent(),
     this.invoicePrefix = const Value.absent(),
     this.invoiceNextNumber = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2529,6 +2673,9 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
     Expression<String>? phone,
     Expression<String>? address,
     Expression<String>? logoPath,
+    Expression<int>? logoVersion,
+    Expression<int>? logoCachedVersion,
+    Expression<int>? logoUploadedVersion,
     Expression<String>? invoicePrefix,
     Expression<int>? invoiceNextNumber,
     Expression<int>? rowid,
@@ -2546,6 +2693,10 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
       if (phone != null) 'phone': phone,
       if (address != null) 'address': address,
       if (logoPath != null) 'logo_path': logoPath,
+      if (logoVersion != null) 'logo_version': logoVersion,
+      if (logoCachedVersion != null) 'logo_cached_version': logoCachedVersion,
+      if (logoUploadedVersion != null)
+        'logo_uploaded_version': logoUploadedVersion,
       if (invoicePrefix != null) 'invoice_prefix': invoicePrefix,
       if (invoiceNextNumber != null) 'invoice_next_number': invoiceNextNumber,
       if (rowid != null) 'rowid': rowid,
@@ -2565,6 +2716,9 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
     Value<String?>? phone,
     Value<String?>? address,
     Value<String?>? logoPath,
+    Value<int>? logoVersion,
+    Value<int>? logoCachedVersion,
+    Value<int>? logoUploadedVersion,
     Value<String>? invoicePrefix,
     Value<int>? invoiceNextNumber,
     Value<int>? rowid,
@@ -2582,6 +2736,9 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
       phone: phone ?? this.phone,
       address: address ?? this.address,
       logoPath: logoPath ?? this.logoPath,
+      logoVersion: logoVersion ?? this.logoVersion,
+      logoCachedVersion: logoCachedVersion ?? this.logoCachedVersion,
+      logoUploadedVersion: logoUploadedVersion ?? this.logoUploadedVersion,
       invoicePrefix: invoicePrefix ?? this.invoicePrefix,
       invoiceNextNumber: invoiceNextNumber ?? this.invoiceNextNumber,
       rowid: rowid ?? this.rowid,
@@ -2627,6 +2784,15 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
     if (logoPath.present) {
       map['logo_path'] = Variable<String>(logoPath.value);
     }
+    if (logoVersion.present) {
+      map['logo_version'] = Variable<int>(logoVersion.value);
+    }
+    if (logoCachedVersion.present) {
+      map['logo_cached_version'] = Variable<int>(logoCachedVersion.value);
+    }
+    if (logoUploadedVersion.present) {
+      map['logo_uploaded_version'] = Variable<int>(logoUploadedVersion.value);
+    }
     if (invoicePrefix.present) {
       map['invoice_prefix'] = Variable<String>(invoicePrefix.value);
     }
@@ -2654,6 +2820,9 @@ class BusinessProfilesCompanion extends UpdateCompanion<BusinessProfile> {
           ..write('phone: $phone, ')
           ..write('address: $address, ')
           ..write('logoPath: $logoPath, ')
+          ..write('logoVersion: $logoVersion, ')
+          ..write('logoCachedVersion: $logoCachedVersion, ')
+          ..write('logoUploadedVersion: $logoUploadedVersion, ')
           ..write('invoicePrefix: $invoicePrefix, ')
           ..write('invoiceNextNumber: $invoiceNextNumber, ')
           ..write('rowid: $rowid')
@@ -14661,6 +14830,9 @@ typedef $$BusinessProfilesTableCreateCompanionBuilder =
       Value<String?> phone,
       Value<String?> address,
       Value<String?> logoPath,
+      Value<int> logoVersion,
+      Value<int> logoCachedVersion,
+      Value<int> logoUploadedVersion,
       Value<String> invoicePrefix,
       Value<int> invoiceNextNumber,
       Value<int> rowid,
@@ -14679,6 +14851,9 @@ typedef $$BusinessProfilesTableUpdateCompanionBuilder =
       Value<String?> phone,
       Value<String?> address,
       Value<String?> logoPath,
+      Value<int> logoVersion,
+      Value<int> logoCachedVersion,
+      Value<int> logoUploadedVersion,
       Value<String> invoicePrefix,
       Value<int> invoiceNextNumber,
       Value<int> rowid,
@@ -14750,6 +14925,21 @@ class $$BusinessProfilesTableFilterComposer
 
   ColumnFilters<String> get logoPath => $composableBuilder(
     column: $table.logoPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get logoVersion => $composableBuilder(
+    column: $table.logoVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get logoCachedVersion => $composableBuilder(
+    column: $table.logoCachedVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get logoUploadedVersion => $composableBuilder(
+    column: $table.logoUploadedVersion,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -14833,6 +15023,21 @@ class $$BusinessProfilesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get logoVersion => $composableBuilder(
+    column: $table.logoVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get logoCachedVersion => $composableBuilder(
+    column: $table.logoCachedVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get logoUploadedVersion => $composableBuilder(
+    column: $table.logoUploadedVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get invoicePrefix => $composableBuilder(
     column: $table.invoicePrefix,
     builder: (column) => ColumnOrderings(column),
@@ -14890,6 +15095,21 @@ class $$BusinessProfilesTableAnnotationComposer
 
   GeneratedColumn<String> get logoPath =>
       $composableBuilder(column: $table.logoPath, builder: (column) => column);
+
+  GeneratedColumn<int> get logoVersion => $composableBuilder(
+    column: $table.logoVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get logoCachedVersion => $composableBuilder(
+    column: $table.logoCachedVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get logoUploadedVersion => $composableBuilder(
+    column: $table.logoUploadedVersion,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get invoicePrefix => $composableBuilder(
     column: $table.invoicePrefix,
@@ -14951,6 +15171,9 @@ class $$BusinessProfilesTableTableManager
                 Value<String?> phone = const Value.absent(),
                 Value<String?> address = const Value.absent(),
                 Value<String?> logoPath = const Value.absent(),
+                Value<int> logoVersion = const Value.absent(),
+                Value<int> logoCachedVersion = const Value.absent(),
+                Value<int> logoUploadedVersion = const Value.absent(),
                 Value<String> invoicePrefix = const Value.absent(),
                 Value<int> invoiceNextNumber = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -14967,6 +15190,9 @@ class $$BusinessProfilesTableTableManager
                 phone: phone,
                 address: address,
                 logoPath: logoPath,
+                logoVersion: logoVersion,
+                logoCachedVersion: logoCachedVersion,
+                logoUploadedVersion: logoUploadedVersion,
                 invoicePrefix: invoicePrefix,
                 invoiceNextNumber: invoiceNextNumber,
                 rowid: rowid,
@@ -14985,6 +15211,9 @@ class $$BusinessProfilesTableTableManager
                 Value<String?> phone = const Value.absent(),
                 Value<String?> address = const Value.absent(),
                 Value<String?> logoPath = const Value.absent(),
+                Value<int> logoVersion = const Value.absent(),
+                Value<int> logoCachedVersion = const Value.absent(),
+                Value<int> logoUploadedVersion = const Value.absent(),
                 Value<String> invoicePrefix = const Value.absent(),
                 Value<int> invoiceNextNumber = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -15001,6 +15230,9 @@ class $$BusinessProfilesTableTableManager
                 phone: phone,
                 address: address,
                 logoPath: logoPath,
+                logoVersion: logoVersion,
+                logoCachedVersion: logoCachedVersion,
+                logoUploadedVersion: logoUploadedVersion,
                 invoicePrefix: invoicePrefix,
                 invoiceNextNumber: invoiceNextNumber,
                 rowid: rowid,

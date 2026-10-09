@@ -6,6 +6,7 @@ import '../db/database.dart';
 import '../remote/mappers.dart';
 import '../remote/sync_api.dart';
 import 'connectivity_monitor.dart';
+import 'logo_sync.dart';
 
 /// Pushes what this device has changed, pulls what it has not seen, and keeps
 /// Ramesh informed about which of those is true right now.
@@ -18,8 +19,11 @@ class SyncService {
     required AppDatabase db,
     required this.connectivity,
     SyncApi? api,
+    LogoSync? logoSync,
     Clock clock = const Clock(),
   })  : _db = db,
+        // ignore: prefer_initializing_formals
+        _logoSync = logoSync,
         // ignore: prefer_initializing_formals
         _api = api,
         // ignore: prefer_initializing_formals
@@ -28,6 +32,7 @@ class SyncService {
 
   final AppDatabase _db;
   final SyncApi? _api;
+  final LogoSync? _logoSync;
   final Clock _clock;
   final SyncDao _syncDao;
   final ConnectivityMonitor connectivity;
@@ -128,12 +133,17 @@ class SyncService {
     _emit(_current.copyWith(phase: SyncPhase.syncing));
 
     try {
+      // The image goes up before the profile row that announces it, and comes
+      // down after the profile row that announced it. A logo problem is logged
+      // and never stops the rest of the cycle.
+      await _logoSync?.pushLogo(userId);
       for (final table in SyncTables.pushOrder) {
         await _push(api, table);
       }
       for (final table in SyncTables.pushOrder) {
         await _pull(api, table);
       }
+      await _logoSync?.pullLogo(userId);
 
       // Movements, ledger entries and payments may have arrived from another
       // install. None of the totals they feed are ever pulled, so every cache

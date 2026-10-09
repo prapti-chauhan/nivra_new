@@ -140,3 +140,5 @@ touch the report period; kept separate per "one slice per commit".)
 - Slice 10 done: revisePurchase, schema_v6.sql, edit UI. Live test written, NOT run (SQL not applied).
 - FOUND, NOT FIXED: reviseBill double-reverses on a second edit (customer balance wrong). Needs user decision (fix code + repair existing data?).
 - FIXED: wipeAll skipped suppliers/purchases/purchase_lines/money_entries.
+- Slice 10 committed c1f8a6a.
+- Slice 11 done: logo (gallery/camera), Storage sync, PDF header, schema_v7.sql. Live test written, NOT run (SQL not applied). Not run on a device.

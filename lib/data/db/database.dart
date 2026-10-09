@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
@@ -45,7 +46,7 @@ class AppDatabase extends _$AppDatabase {
   Clock get clock => _clock;
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -137,6 +138,15 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(purchaseRevisions);
             await m.createIndex(idxPurchaseRevisionsPurchase);
             await m.createIndex(idxPurchaseRevisionsDirty);
+          }
+          if (from < 7) {
+            // Slice eleven: the shop logo. business_profiles has existed since
+            // version 1, so these are always additions to a table already there.
+            await m.addColumn(businessProfiles, businessProfiles.logoVersion);
+            await m.addColumn(
+                businessProfiles, businessProfiles.logoCachedVersion);
+            await m.addColumn(
+                businessProfiles, businessProfiles.logoUploadedVersion);
           }
         },
         beforeOpen: (details) async {
@@ -692,8 +702,28 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
   Future<void> upsertPulledMovement(StockMovementsCompanion row) =>
       into(stockMovements).insertOnConflictUpdate(row);
 
-  Future<void> upsertPulledProfile(BusinessProfilesCompanion row) =>
-      into(businessProfiles).insertOnConflictUpdate(row);
+  /// A profile coming down is usually the row this phone just pushed, and a
+  /// pushed profile advertises only the logo version Storage already has. While
+  /// a newly chosen logo is still waiting to be uploaded that is older than the
+  /// local version, and taking it would quietly throw the new logo away. So a
+  /// local version that is ahead of what was uploaded is kept; everything else
+  /// in the row is taken from the server as usual.
+  Future<void> upsertPulledProfile(BusinessProfilesCompanion row) async {
+    final existing = await (select(businessProfiles)
+          ..where((t) => t.id.equals(row.id.value)))
+        .getSingleOrNull();
+    final waitingToUpload = existing != null &&
+        existing.logoVersion > existing.logoUploadedVersion &&
+        existing.logoCachedVersion == existing.logoVersion;
+    await into(businessProfiles).insertOnConflictUpdate(
+      waitingToUpload
+          ? row.copyWith(
+              logoVersion: const Value.absent(),
+              logoUploadedVersion: const Value.absent(),
+            )
+          : row,
+    );
+  }
 
   Future<void> upsertPulledCustomer(CustomersCompanion row) =>
       into(customers).insertOnConflictUpdate(row);
@@ -828,6 +858,20 @@ class SyncDao extends DatabaseAccessor<AppDatabase> with _$SyncDaoMixin {
 
   /// Signing out must not leave one shop's data on screen for the next login.
   Future<void> wipeAll() async {
+    // The logo is a file outside the database. Left behind, it would be the
+    // first thing the next person to sign in on this phone sees on a bill.
+    final logos = await select(businessProfiles).get();
+    for (final profile in logos) {
+      final path = profile.logoPath;
+      if (path == null) continue;
+      try {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      } on FileSystemException {
+        // Nothing useful to do about a file that will not go.
+      }
+    }
+
     await transaction(() async {
       // Reverse of the push order: children before parents.
       await delete(billRevisions).go();
@@ -1788,6 +1832,39 @@ class BillingDao extends DatabaseAccessor<AppDatabase> with _$BillingDaoMixin {
             ? const Value.absent()
             : Value(invoicePrefix),
         updatedAt: Value(now),
+        isDirty: const Value(true),
+      ),
+    );
+  }
+
+  /// Makes the image at [path] the shop logo. Another phone learns about it
+  /// through the bumped version once this phone has uploaded the image.
+  Future<void> setLogo({required String userId, required String path}) async {
+    final profile = await ensureProfile(userId);
+    final version = profile.logoVersion + 1;
+    await (update(businessProfiles)..where((t) => t.id.equals(profile.id)))
+        .write(
+      BusinessProfilesCompanion(
+        logoPath: Value(path),
+        logoVersion: Value(version),
+        logoCachedVersion: Value(version),
+        updatedAt: Value(_clock.nowMillis()),
+        isDirty: const Value(true),
+      ),
+    );
+  }
+
+  /// Removes the logo. The uploaded version is left as it was, so the next sync
+  /// knows there is an image in Storage to delete.
+  Future<void> clearLogo(String userId) async {
+    final profile = await ensureProfile(userId);
+    await (update(businessProfiles)..where((t) => t.id.equals(profile.id)))
+        .write(
+      BusinessProfilesCompanion(
+        logoPath: const Value(null),
+        logoVersion: const Value(0),
+        logoCachedVersion: const Value(0),
+        updatedAt: Value(_clock.nowMillis()),
         isDirty: const Value(true),
       ),
     );

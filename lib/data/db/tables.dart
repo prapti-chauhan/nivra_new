@@ -90,7 +90,25 @@ class BusinessProfiles extends Table with SyncedRow {
   TextColumn get ownerName => text().nullable()();
   TextColumn get phone => text().nullable()();
   TextColumn get address => text().nullable()();
+
+  /// Device-local, never synced: where this phone keeps its copy of the logo.
+  /// A filesystem path on one phone means nothing on another.
   TextColumn get logoPath => text().nullable()();
+
+  /// Synced. 0 means no logo; otherwise it is bumped each time a new one is
+  /// chosen. The image itself lives in Supabase Storage at a fixed place per
+  /// user, so this number is how another phone knows its copy is out of date.
+  IntColumn get logoVersion => integer().withDefault(const Constant(0))();
+
+  /// Device-local: the version of the image held in [logoPath].
+  IntColumn get logoCachedVersion => integer().withDefault(const Constant(0))();
+
+  /// The newest version known to be in Storage. Set when this phone uploads,
+  /// and when it pulls a version from the server (which means Storage has it).
+  /// The profile only ever advertises this, never a version still waiting to be
+  /// uploaded, so another phone cannot be told about an image that is not there.
+  IntColumn get logoUploadedVersion =>
+      integer().withDefault(const Constant(0))();
   TextColumn get invoicePrefix => text().withDefault(const Constant(''))();
   IntColumn get invoiceNextNumber => integer().withDefault(const Constant(1))();
 }

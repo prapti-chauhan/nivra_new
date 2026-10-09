@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
+import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:path_provider/path_provider.dart';
 
 import '../data/db/database.dart';
 import '../data/pdf/invoice_fonts.dart';
@@ -15,9 +18,11 @@ import '../domain/reports.dart';
 import '../data/remote/supabase_config.dart';
 import '../data/remote/sync_api.dart';
 import '../data/sync/connectivity_monitor.dart';
+import '../data/sync/logo_sync.dart';
 import '../data/sync/sync_service.dart';
 import '../domain/sync_status.dart';
 import '../features/auth/auth_repository.dart';
+import '../features/settings/logo_picker.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
@@ -38,12 +43,39 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return SupabaseAuthRepository(sb.Supabase.instance.client.auth);
 });
 
+/// This phone's copy of the shop logo, kept apart from the database.
+final logoFilesProvider = Provider<LogoFiles>(
+  (ref) => LogoFiles(() async {
+    final base = await getApplicationDocumentsDirectory();
+    return Directory('${base.path}/logo');
+  }),
+);
+
+final logoPickerProvider = Provider<LogoPicker>(
+  (ref) => ImagePickerLogoPicker(),
+);
+
+/// The logo as bytes, or null when there is none or the file has gone.
+final logoBytesProvider = FutureProvider<Uint8List?>((ref) async {
+  final path = ref.watch(
+    businessProfileProvider.select((profile) => profile.value?.logoPath),
+  );
+  return ref.watch(logoFilesProvider).read(path);
+});
+
 final syncServiceProvider = Provider<SyncService>((ref) {
+  final db = ref.watch(databaseProvider);
+  final configured = SupabaseConfig.isConfigured;
   final service = SyncService(
-    db: ref.watch(databaseProvider),
+    db: db,
     connectivity: PlatformConnectivityMonitor(),
-    api: SupabaseConfig.isConfigured
-        ? SupabaseSyncApi(sb.Supabase.instance.client)
+    api: configured ? SupabaseSyncApi(sb.Supabase.instance.client) : null,
+    logoSync: configured
+        ? LogoSync(
+            db: db,
+            storage: SupabaseLogoStorage(sb.Supabase.instance.client),
+            files: ref.watch(logoFilesProvider),
+          )
         : null,
   );
   ref.onDispose(service.dispose);
@@ -431,5 +463,6 @@ final invoicePdfProvider =
   final doc = ref.watch(invoiceDocumentProvider(billId));
   if (doc == null) return null;
   final fonts = await ref.watch(invoiceFontsProvider.future);
-  return renderInvoicePdf(doc, fonts);
+  final logo = await ref.watch(logoBytesProvider.future);
+  return renderInvoicePdf(doc, fonts, logo: logo);
 });

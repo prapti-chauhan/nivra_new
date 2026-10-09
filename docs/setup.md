@@ -11,8 +11,13 @@ Everything works. Data stays on the device and the app says so.
 ## With Supabase
 
 1. Create a project at supabase.com.
-2. Open the SQL editor and run `supabase/schema.sql`, then
-   `supabase/schema_v2.sql`. Both are re-runnable.
+2. Open the SQL editor and run these in order, each as its own run:
+   `supabase/schema.sql`, `schema_v2.sql`, `schema_v3.sql`, `schema_v4.sql`,
+   `schema_v5.sql`, `schema_v6.sql`, `schema_v7.sql`. All are re-runnable.
+   A device that is ahead of the project (the app has a newer local schema than
+   the SQL you have applied) will see its pushes for the new tables or columns
+   rejected, which shows as a sync problem, not as lost data. `schema_v7.sql`
+   also creates the private `logos` Storage bucket and its policies.
 3. Authentication → Providers → Email: enable it. Turn **off** "Confirm email"
    while developing, or the first sign-in will block on a confirmation link.
 4. Project Settings → API. Copy the project URL and the publishable

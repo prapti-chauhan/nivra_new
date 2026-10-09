@@ -24,11 +24,32 @@ const _panel = PdfColor.fromInt(0xFFF5F5F6);
 const _danger = PdfColor.fromInt(0xFF9F1239);
 
 /// Renders [doc] to PDF bytes. No network, no platform channels.
+///
+/// [logo] is the shop's logo image, if it has one. A logo is a convenience and
+/// a bill is not: if the image cannot be drawn for any reason the bill is
+/// rendered again without it rather than failing, so a bad file can never stop
+/// Ramesh from handing a customer their bill.
 Future<Uint8List> renderInvoicePdf(
   InvoiceDocument doc,
   InvoiceFonts fonts, {
   PdfPageFormat format = kInvoicePageFormat,
+  Uint8List? logo,
 }) async {
+  if (logo == null) return _render(doc, fonts, format, null);
+  try {
+    return await _render(doc, fonts, format, logo);
+  } catch (_) {
+    return _render(doc, fonts, format, null);
+  }
+}
+
+Future<Uint8List> _render(
+  InvoiceDocument doc,
+  InvoiceFonts fonts,
+  PdfPageFormat format,
+  Uint8List? logo,
+) async {
+  final logoImage = logo == null ? null : pw.MemoryImage(logo);
   final pdf = pw.Document(
     title: doc.numberLabel,
     author: doc.shopName,
@@ -52,7 +73,9 @@ Future<Uint8List> renderInvoicePdf(
         marginBottom: 28,
       ),
       header: (context) =>
-          context.pageNumber == 1 ? _header(doc, fonts) : _continuedHeader(doc, fonts),
+          context.pageNumber == 1
+              ? _header(doc, fonts, logoImage)
+              : _continuedHeader(doc, fonts),
       footer: (context) => _footer(context, doc),
       build: (context) => [
         pw.SizedBox(height: 14),
@@ -80,13 +103,27 @@ Future<Uint8List> renderInvoicePdf(
   return pdf.save();
 }
 
-pw.Widget _header(InvoiceDocument doc, InvoiceFonts fonts) {
+pw.Widget _header(
+  InvoiceDocument doc,
+  InvoiceFonts fonts,
+  pw.ImageProvider? logo,
+) {
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
       pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
+          if (logo != null) ...[
+            // Contained in a fixed box so a wide banner and a tall emblem both
+            // sit beside the name without pushing the invoice number around.
+            pw.Container(
+              width: 46,
+              height: 46,
+              child: pw.Image(logo, fit: pw.BoxFit.contain),
+            ),
+            pw.SizedBox(width: 10),
+          ],
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -68,6 +69,50 @@ void main() {
   late InvoiceFonts fonts;
 
   setUpAll(() => fonts = loadFonts());
+
+  group('the shop logo', () {
+    // A real 1x1 PNG.
+    final logo = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    );
+
+    test('is drawn on the bill', () async {
+      final without = await renderInvoicePdf(sample(), fonts);
+      final withLogo = await renderInvoicePdf(sample(), fonts, logo: logo);
+      expect(String.fromCharCodes(withLogo.take(5)), '%PDF-');
+      expect(String.fromCharCodes(withLogo), contains('/Subtype/Image'));
+      expect(String.fromCharCodes(without), isNot(contains('/Subtype/Image')));
+      expect(pageCount(withLogo), 1);
+    });
+
+    test('is embedded once, however many pages the bill runs to', () async {
+      int images(Uint8List b) =>
+          '/Subtype/Image'.allMatches(String.fromCharCodes(b)).length;
+      final short = await renderInvoicePdf(sample(), fonts, logo: logo);
+      final long = await renderInvoicePdf(sample(lineCount: 80), fonts, logo: logo);
+      expect(pageCount(long), greaterThan(1));
+      // A PNG with transparency is two image objects (the picture and its
+      // mask), so compare rather than assume one.
+      expect(images(long), images(short),
+          reason: 'continued pages carry the name only, not another copy');
+    });
+
+    test('a file that cannot be drawn never stops the bill', () async {
+      // Starts like a JPEG, is not one. This is what a corrupt download or a
+      // truncated file looks like to the renderer.
+      final broken = Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, 0, 1, 2, 3]);
+      final bytes = await renderInvoicePdf(sample(), fonts, logo: broken);
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+      expect(pageCount(bytes), 1);
+      expect(String.fromCharCodes(bytes), contains('Sharma Hardware'));
+    });
+
+    test('random bytes never stop the bill either', () async {
+      final junk = Uint8List.fromList(List.generate(200, (i) => i * 7 % 256));
+      final bytes = await renderInvoicePdf(sample(), fonts, logo: junk);
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+    });
+  });
 
   group('rendering', () {
     test('produces a real PDF', () async {
