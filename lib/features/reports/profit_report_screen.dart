@@ -76,7 +76,8 @@ class ProfitReportScreen extends ConsumerWidget {
                   )
                 : ListView.builder(
                     itemCount: bills.length,
-                    itemBuilder: (context, i) => _BillProfitTile(bill: bills[i]),
+                    itemBuilder: (context, i) =>
+                        _BillProfitTile(bill: bills[i]),
                   ),
           ),
         ],
@@ -192,7 +193,8 @@ class _BillProfitTile extends StatelessWidget {
           _DetailRow(
             'Bill total',
             Money.format(bill.totalPaise),
-            note: bill.totalPaise !=
+            note:
+                bill.totalPaise !=
                     bill.lines.fold<int>(0, (s, l) => s + l.lineTotalPaise)
                 ? 'after discount'
                 : null,
@@ -212,46 +214,146 @@ class _BillProfitTile extends StatelessWidget {
   }
 }
 
-class _LineRow extends StatelessWidget {
+class _LineRow extends ConsumerWidget {
   const _LineRow({required this.line});
 
   final ProfitLine line;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text(line.name)),
-              Text(Money.format(line.lineTotalPaise), style: theme.textTheme.figure),
-            ],
-          ),
-          const SizedBox(height: 1),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${Qty.formatWithUnit(line.qtyThousandths, line.unit)}'
-                  ' at ${Money.format(line.unitPricePaise)}'
-                  ' · cost ${line.costUnknown ? 'not recorded' : Money.format(line.unitCostPaise)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: line.costUnknown
-                        ? _amber
-                        : theme.colorScheme.onSurfaceVariant,
+    return InkWell(
+      onTap: () => _correctCost(context, ref),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(line.name)),
+                Text(
+                  Money.format(line.lineTotalPaise),
+                  style: theme.textTheme.figure,
+                ),
+              ],
+            ),
+            const SizedBox(height: 1),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${Qty.formatWithUnit(line.qtyThousandths, line.unit)}'
+                    ' at ${Money.format(line.unitPricePaise)}'
+                    ' · cost ${line.costUnknown ? 'not recorded' : Money.format(line.unitCostPaise)}'
+                    '${line.costCorrected ? ' (corrected)' : ''}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: line.costUnknown
+                          ? _amber
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
-              if (line.costUnknown)
-                const Icon(Icons.info_outline, size: 14, color: _amber),
-            ],
+                if (line.costUnknown)
+                  const Icon(Icons.info_outline, size: 14, color: _amber)
+                else
+                  Icon(
+                    Icons.edit_outlined,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _correctCost(BuildContext context, WidgetRef ref) async {
+    final entered = await showDialog<int>(
+      context: context,
+      builder: (_) => _CostDialog(line: line),
+    );
+    if (entered == null) return;
+    await ref
+        .read(billingDaoProvider)
+        .correctLineCost(lineId: line.id, unitCostPaise: entered);
+  }
+}
+
+/// Asks what one unit really cost. Pops the answer in paise, or nothing.
+class _CostDialog extends StatefulWidget {
+  const _CostDialog({required this.line});
+
+  final ProfitLine line;
+
+  @override
+  State<_CostDialog> createState() => _CostDialogState();
+}
+
+class _CostDialogState extends State<_CostDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.line.costUnknown
+        ? ''
+        : Money.formatPlain(widget.line.unitCostPaise).replaceAll(',', ''),
+  );
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final paise = Money.tryParse(_controller.text);
+    if (paise == null || paise <= 0) {
+      setState(() => _error = 'Enter what one unit cost, more than zero.');
+      return;
+    }
+    Navigator.of(context).pop(paise);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final line = widget.line;
+    final original = line.originalUnitCostPaise;
+    return AlertDialog(
+      title: Text('Cost of ${line.name}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Cost per ${line.unit}',
+              prefixText: '₹ ',
+              errorText: _error,
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            original == null
+                ? 'Only the profit changes. The bill the customer has stays '
+                      'exactly as it was.'
+                : 'Was ${Money.format(original)} when sold. Only the profit '
+                      'changes; the customer\'s bill does not.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Save cost')),
+      ],
     );
   }
 }

@@ -772,3 +772,57 @@ Three new widget tests in `test/features/money_flow_test.dart`: the form
 preselects the last method, a manual choice is not overridden, and an expense
 is saved from the Bills screen and returns to it. `flutter analyze` clean; 267
 offline tests pass. No schema change. Not run on a device.
+
+---
+
+# Slice eight — correcting the cost on a bill line
+
+A sale is often entered before the purchase that supplied it, so
+`bill_lines.unit_cost` can be zero or stale and the profit report overstates
+what was made (D18's price-swing weakness).
+
+## Decided while building
+
+- **A correction edits the cost on the line, in place, and is not a bill
+  revision.** Rejected: routing it through `reviseBill`, which would reverse and
+  reissue the whole sale, burn a revision and mark the bill "Edited" for a change
+  the customer cannot see and that touches no quantity, price, stock or ledger
+  row. A test asserts all of those, and the bill's `revision` and `updated_at`,
+  are unchanged.
+- **The first cost a line ever had is kept in `original_unit_cost` and later
+  corrections never overwrite it**, with `cost_corrected_at` for when. Null
+  means never corrected. Rejected: a separate corrections table, which is more
+  sync surface for a fact that belongs to one row.
+- **Zero is refused as a correction.** Zero already means "not recorded", and
+  the report treats it as unknown. Saving the same cost again is a no-op and
+  does not stamp a correction.
+- **Corrected lines are marked "(corrected)" on the profit report, and the
+  dialog states the old figure.** Nothing about cost appears on the customer's
+  PDF.
+- **Revising a bill snapshots `original_unit_cost` too**, but the new lines
+  written by a revision start uncorrected: they are new rows, and the cost they
+  carry is whatever the editor loaded (a corrected cost is preserved, its
+  history stays on the superseded row and in the snapshot).
+- **Not done:** applying one correction to every other line of the same item.
+  It would silently rewrite lines he did not look at.
+
+## Schema
+
+`supabase/schema_v5.sql` adds two nullable columns to `bill_lines`. Local Drift
+schema is now 5; `drift_schemas/drift_schema_v5.json` and the generated
+migration helpers are updated. A v4 database upgrades with the columns empty
+and its data intact (migration test).
+
+## Verified, not asserted
+
+Offline: `flutter analyze` clean; 277 tests pass, including five DAO tests for
+the correction rules, a mapper round trip (and a row from a server without the
+new columns), a v4 -> v5 migration test, and two widget tests that correct a
+cost from the profit report and refuse a zero.
+
+**Not verified: `schema_v5.sql` has not been applied to the live project.** The
+live test `a corrected line cost, and the cost it replaced, reach a second
+device` in `test/integration/supabase_sync_test.dart` is written and has not
+been run; it fails until the SQL is applied. Until then, a device that corrects
+a cost will see its push rejected for that table (a permanent failure, shown as
+a sync problem) because Postgres lacks the columns.

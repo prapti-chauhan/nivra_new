@@ -236,6 +236,14 @@ class BillLines extends Table with SyncedRow {
   /// Paise per unit at the time of sale, carried so profit stays traceable.
   IntColumn get unitCost => integer().withDefault(const Constant(0))();
 
+  /// Set the first time the cost on this line is corrected, to what it was
+  /// before. Never overwritten by a later correction, so the figure recorded
+  /// at the time of sale can always be recovered. Null means never corrected.
+  IntColumn get originalUnitCost => integer().nullable()();
+
+  /// When the cost was last corrected. Null means never.
+  IntColumn get costCorrectedAt => integer().nullable()();
+
   IntColumn get lineTotal => integer()();
 
   /// Reserved for GST.

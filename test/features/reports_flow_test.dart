@@ -192,4 +192,44 @@ void main() {
     expect(find.textContaining('Nothing is running low'), findsOneWidget);
     expect(find.textContaining('low-stock level'), findsOneWidget);
   });
+  testWidgets('a missing cost is corrected from the profit report',
+      (tester) async {
+    await sellBolts(cost: 0);
+    await openApp(tester, '/reports/profit');
+    expect(find.textContaining('no cost on record'), findsOneWidget);
+    // Sold for Rs 100 against nothing, so all of it counts as profit.
+    await tester.tap(find.text('INV-1'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('cost not recorded'), findsOneWidget);
+
+    await tester.tap(find.text('16mm hex bolt'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cost of 16mm hex bolt'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '18');
+    await tester.tap(find.text('Save cost'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('no cost on record'), findsNothing);
+    expect(find.textContaining('cost ₹18.00 (corrected)'), findsOneWidget);
+    // Rs 100 less 4 x Rs 18 is Rs 28.
+    expect(find.text('₹28.00'), findsWidgets);
+  });
+
+  testWidgets('a correction with nothing sensible entered is refused',
+      (tester) async {
+    await sellBolts(cost: 0);
+    await openApp(tester, '/reports/profit');
+    await tester.tap(find.text('INV-1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('16mm hex bolt'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '0');
+    await tester.tap(find.text('Save cost'));
+    await tester.pump();
+
+    expect(find.textContaining('more than zero'), findsOneWidget);
+    final line = await db.select(db.billLines).getSingle();
+    expect(line.unitCost, 0);
+  });
 }

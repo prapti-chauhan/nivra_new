@@ -2,7 +2,7 @@
 
 Flow: FEATURE
 Created: 2026-10-09
-Status: PLAN — awaiting user "yes". No source written.
+Status: IN PROGRESS — plan approved 2026-10-09.
 
 ## Request
 
@@ -132,4 +132,5 @@ touch the report period; kept separate per "one slice per commit".)
 
 ## Log
 
-(empty)
+- Slice 7 done, committed e28ba83. Also fixed a stray typo (`broadc ast`) in the user's uncommitted auth_repository.dart edit that stopped the project compiling.
+- Slice 8 code, tests and schema_v5.sql written. Live test written, NOT run (SQL not applied).

@@ -528,4 +528,101 @@ void main() {
       expect((await parties.findCustomer(customerId))!.balance, 2900);
     });
   });
+  group('correcting the cost on a line', () {
+    Future<(String billId, BillLine line)> sellWithCost(int cost) async {
+      final billId = await billing.saveBill(
+        userId: userId,
+        lines: [
+          BillLineDraft(
+            itemId: boltId,
+            name: 'Hex bolt 16mm',
+            unit: 'pcs',
+            qty: 3000,
+            unitPrice: 1450,
+            unitCost: cost,
+          ),
+        ],
+      );
+      return (billId, (await billing.linesFor(billId)).single);
+    }
+
+    test('changes the cost and keeps what it was', () async {
+      final (_, line) = await sellWithCost(0);
+      clock.advance(1000);
+
+      await billing.correctLineCost(lineId: line.id, unitCostPaise: 900);
+
+      final after = (await (db.select(db.billLines)
+                ..where((t) => t.id.equals(line.id)))
+              .getSingle());
+      expect(after.unitCost, 900);
+      expect(after.originalUnitCost, 0);
+      expect(after.costCorrectedAt, clock.nowMillis());
+      expect(after.isDirty, isTrue, reason: 'it must reach the server');
+    });
+
+    test('a second correction does not overwrite the original', () async {
+      final (_, line) = await sellWithCost(1000);
+      await billing.correctLineCost(lineId: line.id, unitCostPaise: 900);
+      await billing.correctLineCost(lineId: line.id, unitCostPaise: 950);
+
+      final after = await (db.select(db.billLines)
+            ..where((t) => t.id.equals(line.id)))
+          .getSingle();
+      expect(after.unitCost, 950);
+      expect(after.originalUnitCost, 1000);
+    });
+
+    test('touches nothing the customer or the shelf can see', () async {
+      final (billId, line) = await sellWithCost(1000);
+      final billBefore = await billing.findBill(billId);
+      final stockBefore = await stock(boltId);
+      final ledgerBefore = await db.select(db.ledgerEntries).get();
+      final movementsBefore = await db.select(db.stockMovements).get();
+
+      await billing.correctLineCost(lineId: line.id, unitCostPaise: 700);
+
+      final billAfter = await billing.findBill(billId);
+      expect(billAfter!.total, billBefore!.total);
+      expect(billAfter.revision, billBefore.revision,
+          reason: 'a cost fix is not an edit of the bill');
+      expect(billAfter.updatedAt, billBefore.updatedAt);
+      expect(await stock(boltId), stockBefore);
+      expect((await db.select(db.ledgerEntries).get()).length,
+          ledgerBefore.length);
+      expect((await db.select(db.stockMovements).get()).length,
+          movementsBefore.length);
+      final lineAfter = (await billing.linesFor(billId)).single;
+      expect(lineAfter.qty, line.qty);
+      expect(lineAfter.unitPrice, line.unitPrice);
+      expect(lineAfter.lineTotal, line.lineTotal);
+    });
+
+    test('setting the same cost again changes nothing', () async {
+      final (_, line) = await sellWithCost(1000);
+      await billing.correctLineCost(lineId: line.id, unitCostPaise: 1000);
+
+      final after = await (db.select(db.billLines)
+            ..where((t) => t.id.equals(line.id)))
+          .getSingle();
+      expect(after.originalUnitCost, isNull);
+      expect(after.costCorrectedAt, isNull);
+    });
+
+    test('refuses zero, negative and unknown lines', () async {
+      final (_, line) = await sellWithCost(1000);
+      expect(
+        () => billing.correctLineCost(lineId: line.id, unitCostPaise: 0),
+        throwsArgumentError,
+      );
+      expect(
+        () => billing.correctLineCost(lineId: line.id, unitCostPaise: -5),
+        throwsArgumentError,
+      );
+      expect(
+        () => billing.correctLineCost(lineId: 'nope', unitCostPaise: 5),
+        throwsStateError,
+      );
+    });
+  });
 }

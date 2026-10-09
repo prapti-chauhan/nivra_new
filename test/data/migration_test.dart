@@ -13,6 +13,7 @@ import 'package:nivra_new/domain/cashbook.dart';
 import '../generated_migrations/schema.dart';
 import '../generated_migrations/schema_v2.dart' as v2;
 import '../generated_migrations/schema_v3.dart' as v3;
+import '../generated_migrations/schema_v4.dart' as v4;
 
 /// Ramesh already has the app on his phone with real bills in it. A fresh
 /// install exercises `createAll` and would never touch `onUpgrade`, so without
@@ -27,7 +28,7 @@ void main() {
   test('a v2 database upgrades to the current schema with the expected shape', () async {
     final connection = await verifier.startAt(2);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 4);
+    await verifier.migrateAndValidate(db, 5);
     await db.close();
   });
 
@@ -102,7 +103,7 @@ void main() {
       connection,
       clock: FixedClock(1700000000000),
     );
-    await verifier.migrateAndValidate(db, 4);
+    await verifier.migrateAndValidate(db, 5);
 
     final dao = PurchaseDao(db);
     final itemId = await InventoryDao(db).createItem(
@@ -131,19 +132,19 @@ void main() {
     await db.close();
   });
 
-  test('a v3 database upgrades to v4 with the expected shape', () async {
+  test('a v3 database upgrades to the current schema with the expected shape', () async {
     final connection = await verifier.startAt(3);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 4);
+    await verifier.migrateAndValidate(db, 5);
     await db.close();
   });
 
-  test('a database two versions behind still reaches v4', () async {
-    // A phone that skipped an update goes 2 -> 4 in one open. Each step is
+  test('a database two versions behind still reaches the current schema', () async {
+    // A phone that skipped an update goes 2 -> 5 in one open. Each step is
     // guarded by `from < N`, and this is what proves they chain.
     final connection = await verifier.startAt(2);
     final db = AppDatabase.forTesting(connection, clock: FixedClock(1700000000000));
-    await verifier.migrateAndValidate(db, 4);
+    await verifier.migrateAndValidate(db, 5);
     await db.close();
   });
 
@@ -189,6 +190,39 @@ void main() {
 
     await upgraded.close();
     await dir.delete(recursive: true);
+  });
+  test('a v4 database gains the cost-correction columns, empty', () async {
+    final dir = await Directory.systemTemp.createTemp('nivra_migration_v4');
+    final file = File('${dir.path}/nivra.sqlite');
+
+    final old = v4.DatabaseAtV4(NativeDatabase(file));
+    await old.customSelect('SELECT 1').get();
+    await old.customStatement(
+      "INSERT INTO bills (id, user_id, created_at, updated_at, is_dirty, "
+      "number, occurred_at) VALUES ('b1', 'u1', 1, 1, 0, 1, 1)",
+    );
+    await old.customStatement(
+      "INSERT INTO bill_lines (id, user_id, created_at, updated_at, is_dirty, "
+      "bill_id, name, qty, unit_price, unit_cost, line_total) "
+      "VALUES ('l1', 'u1', 1, 1, 0, 'b1', 'bolt', 1000, 2500, 1800, 2500)",
+    );
+    await old.close();
+
+    final upgraded = AppDatabase.forTesting(
+      NativeDatabase(file),
+      clock: FixedClock(1700000000000),
+    );
+    final line = await upgraded
+        .customSelect(
+          'SELECT unit_cost, original_unit_cost, cost_corrected_at '
+          'FROM bill_lines',
+          readsFrom: {},
+        )
+        .getSingle();
+    expect(line.read<int>('unit_cost'), 1800);
+    expect(line.read<int?>('original_unit_cost'), isNull);
+    expect(line.read<int?>('cost_corrected_at'), isNull);
+    await upgraded.close();
   });
 }
 

@@ -44,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   Clock get clock => _clock;
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -115,6 +115,11 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(moneyEntries);
             await m.createIndex(idxMoneyEntriesOccurred);
             await m.createIndex(idxMoneyEntriesDirty);
+          }
+          if (from < 5) {
+            // Slice eight: a bill line's cost can be corrected afterwards.
+            await m.addColumn(billLines, billLines.originalUnitCost);
+            await m.addColumn(billLines, billLines.costCorrectedAt);
           }
         },
         beforeOpen: (details) async {
@@ -1108,6 +1113,41 @@ class BillingDao extends DatabaseAccessor<AppDatabase> with _$BillingDaoMixin {
             ..orderBy([(t) => OrderingTerm(expression: t.position)]))
           .get();
 
+  /// Fixes the cost a line was sold against, for the common case where the
+  /// sale was entered before the purchase was, so the cost on record was stale
+  /// or missing.
+  ///
+  /// Touches nothing but this line's cost: not the quantity, the price, the
+  /// bill's total, stock or any ledger row — the customer's bill is unchanged,
+  /// so this is deliberately not a revision. The first cost the line ever had
+  /// is kept in `original_unit_cost`, and later corrections leave it alone.
+  Future<void> correctLineCost({
+    required String lineId,
+    required int unitCostPaise,
+  }) async {
+    if (unitCostPaise <= 0) {
+      throw ArgumentError('A cost must be more than zero');
+    }
+    final now = _clock.nowMillis();
+    await transaction(() async {
+      final line = await (select(billLines)
+            ..where((t) => t.id.equals(lineId) & t.deletedAt.isNull()))
+          .getSingleOrNull();
+      if (line == null) throw StateError('No such bill line: $lineId');
+      if (line.unitCost == unitCostPaise) return;
+
+      await (update(billLines)..where((t) => t.id.equals(lineId))).write(
+        BillLinesCompanion(
+          unitCost: Value(unitCostPaise),
+          originalUnitCost: Value(line.originalUnitCost ?? line.unitCost),
+          costCorrectedAt: Value(now),
+          updatedAt: Value(now),
+          isDirty: const Value(true),
+        ),
+      );
+    });
+  }
+
   Stream<List<BillRevision>> watchRevisions(String billId) {
     final query = select(billRevisions)
       ..where((t) => t.billId.equals(billId))
@@ -1656,6 +1696,7 @@ class BillingDao extends DatabaseAccessor<AppDatabase> with _$BillingDaoMixin {
             'qty': l.qty,
             'unit_price': l.unitPrice,
             'unit_cost': l.unitCost,
+            'original_unit_cost': l.originalUnitCost,
             'line_total': l.lineTotal,
           },
       ],

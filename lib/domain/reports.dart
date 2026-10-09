@@ -60,14 +60,17 @@ DateRange rangeFor(ReportPeriod period, DateTime now) {
 /// One line of a bill as profit sees it.
 class ProfitLine {
   const ProfitLine({
+    required this.id,
     required this.name,
     required this.unit,
     required this.qtyThousandths,
     required this.unitPricePaise,
     required this.unitCostPaise,
     required this.lineTotalPaise,
+    this.originalUnitCostPaise,
   });
 
+  final String id;
   final String name;
   final String unit;
   final int qtyThousandths;
@@ -76,6 +79,11 @@ class ProfitLine {
   /// What this line was sold against. Frozen at billing.
   final int unitCostPaise;
   final int lineTotalPaise;
+
+  /// What the cost was before it was first corrected. Null if never corrected.
+  final int? originalUnitCostPaise;
+
+  bool get costCorrected => originalUnitCostPaise != null;
 
   /// Same rounding rule as the price side, so cost and revenue can never
   /// disagree by a paisa about the same quantity.

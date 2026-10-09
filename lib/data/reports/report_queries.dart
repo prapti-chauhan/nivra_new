@@ -54,12 +54,14 @@ class ReportQueries {
         final list = linesByBill.putIfAbsent(bill.id, () => <ProfitLine>[]);
         if (line != null) {
           list.add(ProfitLine(
+            id: line.id,
             name: line.name,
             unit: line.unit,
             qtyThousandths: line.qty,
             unitPricePaise: line.unitPrice,
             unitCostPaise: line.unitCost,
             lineTotalPaise: line.lineTotal,
+            originalUnitCostPaise: line.originalUnitCost,
           ));
         }
       }

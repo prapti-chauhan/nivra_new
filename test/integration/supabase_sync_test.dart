@@ -703,5 +703,61 @@ void main() {
     await other.auth.signOut();
     await other.dispose();
   }, timeout: const Timeout(Duration(minutes: 3)));
+  // Needs supabase/schema_v5.sql applied to the project first. Written but NOT
+  // yet run: until that SQL is applied it fails by design.
+  test('a corrected line cost, and the cost it replaced, reach a second device',
+      () async {
+    final one = AppDatabase.forTesting(NativeDatabase.memory());
+    final billOne = BillingDao(one);
+    final syncOne = SyncService(
+      db: one,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+
+    final billId = await billOne.saveBill(
+      userId: userId,
+      lines: const [
+        BillLineDraft(
+          itemId: null,
+          name: 'IT unknown-cost washer',
+          unit: 'pcs',
+          qty: 2000,
+          unitPrice: 500,
+          unitCost: 0,
+        ),
+      ],
+    );
+    await syncOne.start(userId);
+    await syncOne.syncNow();
+    expect(syncOne.currentStatus.phase, SyncPhase.synced,
+        reason: 'first push: ${syncOne.currentStatus.message}');
+
+    final lineId = (await billOne.linesFor(billId)).single.id;
+    await billOne.correctLineCost(lineId: lineId, unitCostPaise: 320);
+    await syncOne.syncNow();
+    expect(syncOne.currentStatus.phase, SyncPhase.synced,
+        reason: 'the correction should push: ${syncOne.currentStatus.message}');
+    expect(await SyncDao(one).pendingCount(), 0);
+
+    final two = AppDatabase.forTesting(NativeDatabase.memory());
+    final syncTwo = SyncService(
+      db: two,
+      connectivity: FakeConnectivityMonitor(),
+      api: SupabaseSyncApi(client),
+    );
+    await syncTwo.start(userId);
+    await syncTwo.syncNow();
+
+    final line = (await BillingDao(two).linesFor(billId)).single;
+    expect(line.unitCost, 320);
+    expect(line.originalUnitCost, 0);
+    expect(line.costCorrectedAt, isNotNull);
+
+    await syncOne.stop();
+    await syncTwo.stop();
+    await one.close();
+    await two.close();
+  });
 }
 

@@ -5648,6 +5648,28 @@ class $BillLinesTable extends BillLines
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _originalUnitCostMeta = const VerificationMeta(
+    'originalUnitCost',
+  );
+  @override
+  late final GeneratedColumn<int> originalUnitCost = GeneratedColumn<int>(
+    'original_unit_cost',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _costCorrectedAtMeta = const VerificationMeta(
+    'costCorrectedAt',
+  );
+  @override
+  late final GeneratedColumn<int> costCorrectedAt = GeneratedColumn<int>(
+    'cost_corrected_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _lineTotalMeta = const VerificationMeta(
     'lineTotal',
   );
@@ -5699,6 +5721,8 @@ class $BillLinesTable extends BillLines
     qty,
     unitPrice,
     unitCost,
+    originalUnitCost,
+    costCorrectedAt,
     lineTotal,
     taxRateBp,
     position,
@@ -5815,6 +5839,24 @@ class $BillLinesTable extends BillLines
         unitCost.isAcceptableOrUnknown(data['unit_cost']!, _unitCostMeta),
       );
     }
+    if (data.containsKey('original_unit_cost')) {
+      context.handle(
+        _originalUnitCostMeta,
+        originalUnitCost.isAcceptableOrUnknown(
+          data['original_unit_cost']!,
+          _originalUnitCostMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cost_corrected_at')) {
+      context.handle(
+        _costCorrectedAtMeta,
+        costCorrectedAt.isAcceptableOrUnknown(
+          data['cost_corrected_at']!,
+          _costCorrectedAtMeta,
+        ),
+      );
+    }
     if (data.containsKey('line_total')) {
       context.handle(
         _lineTotalMeta,
@@ -5900,6 +5942,14 @@ class $BillLinesTable extends BillLines
         DriftSqlType.int,
         data['${effectivePrefix}unit_cost'],
       )!,
+      originalUnitCost: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}original_unit_cost'],
+      ),
+      costCorrectedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cost_corrected_at'],
+      ),
       lineTotal: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}line_total'],
@@ -5944,6 +5994,14 @@ class BillLine extends DataClass implements Insertable<BillLine> {
 
   /// Paise per unit at the time of sale, carried so profit stays traceable.
   final int unitCost;
+
+  /// Set the first time the cost on this line is corrected, to what it was
+  /// before. Never overwritten by a later correction, so the figure recorded
+  /// at the time of sale can always be recovered. Null means never corrected.
+  final int? originalUnitCost;
+
+  /// When the cost was last corrected. Null means never.
+  final int? costCorrectedAt;
   final int lineTotal;
 
   /// Reserved for GST.
@@ -5964,6 +6022,8 @@ class BillLine extends DataClass implements Insertable<BillLine> {
     required this.qty,
     required this.unitPrice,
     required this.unitCost,
+    this.originalUnitCost,
+    this.costCorrectedAt,
     required this.lineTotal,
     required this.taxRateBp,
     required this.position,
@@ -5991,6 +6051,12 @@ class BillLine extends DataClass implements Insertable<BillLine> {
     map['qty'] = Variable<int>(qty);
     map['unit_price'] = Variable<int>(unitPrice);
     map['unit_cost'] = Variable<int>(unitCost);
+    if (!nullToAbsent || originalUnitCost != null) {
+      map['original_unit_cost'] = Variable<int>(originalUnitCost);
+    }
+    if (!nullToAbsent || costCorrectedAt != null) {
+      map['cost_corrected_at'] = Variable<int>(costCorrectedAt);
+    }
     map['line_total'] = Variable<int>(lineTotal);
     map['tax_rate_bp'] = Variable<int>(taxRateBp);
     map['position'] = Variable<int>(position);
@@ -6019,6 +6085,12 @@ class BillLine extends DataClass implements Insertable<BillLine> {
       qty: Value(qty),
       unitPrice: Value(unitPrice),
       unitCost: Value(unitCost),
+      originalUnitCost: originalUnitCost == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originalUnitCost),
+      costCorrectedAt: costCorrectedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(costCorrectedAt),
       lineTotal: Value(lineTotal),
       taxRateBp: Value(taxRateBp),
       position: Value(position),
@@ -6045,6 +6117,8 @@ class BillLine extends DataClass implements Insertable<BillLine> {
       qty: serializer.fromJson<int>(json['qty']),
       unitPrice: serializer.fromJson<int>(json['unitPrice']),
       unitCost: serializer.fromJson<int>(json['unitCost']),
+      originalUnitCost: serializer.fromJson<int?>(json['originalUnitCost']),
+      costCorrectedAt: serializer.fromJson<int?>(json['costCorrectedAt']),
       lineTotal: serializer.fromJson<int>(json['lineTotal']),
       taxRateBp: serializer.fromJson<int>(json['taxRateBp']),
       position: serializer.fromJson<int>(json['position']),
@@ -6068,6 +6142,8 @@ class BillLine extends DataClass implements Insertable<BillLine> {
       'qty': serializer.toJson<int>(qty),
       'unitPrice': serializer.toJson<int>(unitPrice),
       'unitCost': serializer.toJson<int>(unitCost),
+      'originalUnitCost': serializer.toJson<int?>(originalUnitCost),
+      'costCorrectedAt': serializer.toJson<int?>(costCorrectedAt),
       'lineTotal': serializer.toJson<int>(lineTotal),
       'taxRateBp': serializer.toJson<int>(taxRateBp),
       'position': serializer.toJson<int>(position),
@@ -6089,6 +6165,8 @@ class BillLine extends DataClass implements Insertable<BillLine> {
     int? qty,
     int? unitPrice,
     int? unitCost,
+    Value<int?> originalUnitCost = const Value.absent(),
+    Value<int?> costCorrectedAt = const Value.absent(),
     int? lineTotal,
     int? taxRateBp,
     int? position,
@@ -6109,6 +6187,12 @@ class BillLine extends DataClass implements Insertable<BillLine> {
     qty: qty ?? this.qty,
     unitPrice: unitPrice ?? this.unitPrice,
     unitCost: unitCost ?? this.unitCost,
+    originalUnitCost: originalUnitCost.present
+        ? originalUnitCost.value
+        : this.originalUnitCost,
+    costCorrectedAt: costCorrectedAt.present
+        ? costCorrectedAt.value
+        : this.costCorrectedAt,
     lineTotal: lineTotal ?? this.lineTotal,
     taxRateBp: taxRateBp ?? this.taxRateBp,
     position: position ?? this.position,
@@ -6131,6 +6215,12 @@ class BillLine extends DataClass implements Insertable<BillLine> {
       qty: data.qty.present ? data.qty.value : this.qty,
       unitPrice: data.unitPrice.present ? data.unitPrice.value : this.unitPrice,
       unitCost: data.unitCost.present ? data.unitCost.value : this.unitCost,
+      originalUnitCost: data.originalUnitCost.present
+          ? data.originalUnitCost.value
+          : this.originalUnitCost,
+      costCorrectedAt: data.costCorrectedAt.present
+          ? data.costCorrectedAt.value
+          : this.costCorrectedAt,
       lineTotal: data.lineTotal.present ? data.lineTotal.value : this.lineTotal,
       taxRateBp: data.taxRateBp.present ? data.taxRateBp.value : this.taxRateBp,
       position: data.position.present ? data.position.value : this.position,
@@ -6154,6 +6244,8 @@ class BillLine extends DataClass implements Insertable<BillLine> {
           ..write('qty: $qty, ')
           ..write('unitPrice: $unitPrice, ')
           ..write('unitCost: $unitCost, ')
+          ..write('originalUnitCost: $originalUnitCost, ')
+          ..write('costCorrectedAt: $costCorrectedAt, ')
           ..write('lineTotal: $lineTotal, ')
           ..write('taxRateBp: $taxRateBp, ')
           ..write('position: $position')
@@ -6177,6 +6269,8 @@ class BillLine extends DataClass implements Insertable<BillLine> {
     qty,
     unitPrice,
     unitCost,
+    originalUnitCost,
+    costCorrectedAt,
     lineTotal,
     taxRateBp,
     position,
@@ -6199,6 +6293,8 @@ class BillLine extends DataClass implements Insertable<BillLine> {
           other.qty == this.qty &&
           other.unitPrice == this.unitPrice &&
           other.unitCost == this.unitCost &&
+          other.originalUnitCost == this.originalUnitCost &&
+          other.costCorrectedAt == this.costCorrectedAt &&
           other.lineTotal == this.lineTotal &&
           other.taxRateBp == this.taxRateBp &&
           other.position == this.position);
@@ -6219,6 +6315,8 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
   final Value<int> qty;
   final Value<int> unitPrice;
   final Value<int> unitCost;
+  final Value<int?> originalUnitCost;
+  final Value<int?> costCorrectedAt;
   final Value<int> lineTotal;
   final Value<int> taxRateBp;
   final Value<int> position;
@@ -6238,6 +6336,8 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
     this.qty = const Value.absent(),
     this.unitPrice = const Value.absent(),
     this.unitCost = const Value.absent(),
+    this.originalUnitCost = const Value.absent(),
+    this.costCorrectedAt = const Value.absent(),
     this.lineTotal = const Value.absent(),
     this.taxRateBp = const Value.absent(),
     this.position = const Value.absent(),
@@ -6258,6 +6358,8 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
     required int qty,
     required int unitPrice,
     this.unitCost = const Value.absent(),
+    this.originalUnitCost = const Value.absent(),
+    this.costCorrectedAt = const Value.absent(),
     required int lineTotal,
     this.taxRateBp = const Value.absent(),
     this.position = const Value.absent(),
@@ -6286,6 +6388,8 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
     Expression<int>? qty,
     Expression<int>? unitPrice,
     Expression<int>? unitCost,
+    Expression<int>? originalUnitCost,
+    Expression<int>? costCorrectedAt,
     Expression<int>? lineTotal,
     Expression<int>? taxRateBp,
     Expression<int>? position,
@@ -6306,6 +6410,8 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
       if (qty != null) 'qty': qty,
       if (unitPrice != null) 'unit_price': unitPrice,
       if (unitCost != null) 'unit_cost': unitCost,
+      if (originalUnitCost != null) 'original_unit_cost': originalUnitCost,
+      if (costCorrectedAt != null) 'cost_corrected_at': costCorrectedAt,
       if (lineTotal != null) 'line_total': lineTotal,
       if (taxRateBp != null) 'tax_rate_bp': taxRateBp,
       if (position != null) 'position': position,
@@ -6328,6 +6434,8 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
     Value<int>? qty,
     Value<int>? unitPrice,
     Value<int>? unitCost,
+    Value<int?>? originalUnitCost,
+    Value<int?>? costCorrectedAt,
     Value<int>? lineTotal,
     Value<int>? taxRateBp,
     Value<int>? position,
@@ -6348,6 +6456,8 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
       qty: qty ?? this.qty,
       unitPrice: unitPrice ?? this.unitPrice,
       unitCost: unitCost ?? this.unitCost,
+      originalUnitCost: originalUnitCost ?? this.originalUnitCost,
+      costCorrectedAt: costCorrectedAt ?? this.costCorrectedAt,
       lineTotal: lineTotal ?? this.lineTotal,
       taxRateBp: taxRateBp ?? this.taxRateBp,
       position: position ?? this.position,
@@ -6400,6 +6510,12 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
     if (unitCost.present) {
       map['unit_cost'] = Variable<int>(unitCost.value);
     }
+    if (originalUnitCost.present) {
+      map['original_unit_cost'] = Variable<int>(originalUnitCost.value);
+    }
+    if (costCorrectedAt.present) {
+      map['cost_corrected_at'] = Variable<int>(costCorrectedAt.value);
+    }
     if (lineTotal.present) {
       map['line_total'] = Variable<int>(lineTotal.value);
     }
@@ -6432,6 +6548,8 @@ class BillLinesCompanion extends UpdateCompanion<BillLine> {
           ..write('qty: $qty, ')
           ..write('unitPrice: $unitPrice, ')
           ..write('unitCost: $unitCost, ')
+          ..write('originalUnitCost: $originalUnitCost, ')
+          ..write('costCorrectedAt: $costCorrectedAt, ')
           ..write('lineTotal: $lineTotal, ')
           ..write('taxRateBp: $taxRateBp, ')
           ..write('position: $position, ')
@@ -16060,6 +16178,8 @@ typedef $$BillLinesTableCreateCompanionBuilder =
       required int qty,
       required int unitPrice,
       Value<int> unitCost,
+      Value<int?> originalUnitCost,
+      Value<int?> costCorrectedAt,
       required int lineTotal,
       Value<int> taxRateBp,
       Value<int> position,
@@ -16081,6 +16201,8 @@ typedef $$BillLinesTableUpdateCompanionBuilder =
       Value<int> qty,
       Value<int> unitPrice,
       Value<int> unitCost,
+      Value<int?> originalUnitCost,
+      Value<int?> costCorrectedAt,
       Value<int> lineTotal,
       Value<int> taxRateBp,
       Value<int> position,
@@ -16192,6 +16314,16 @@ class $$BillLinesTableFilterComposer
 
   ColumnFilters<int> get unitCost => $composableBuilder(
     column: $table.unitCost,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get originalUnitCost => $composableBuilder(
+    column: $table.originalUnitCost,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get costCorrectedAt => $composableBuilder(
+    column: $table.costCorrectedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -16326,6 +16458,16 @@ class $$BillLinesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get originalUnitCost => $composableBuilder(
+    column: $table.originalUnitCost,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get costCorrectedAt => $composableBuilder(
+    column: $table.costCorrectedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get lineTotal => $composableBuilder(
     column: $table.lineTotal,
     builder: (column) => ColumnOrderings(column),
@@ -16435,6 +16577,16 @@ class $$BillLinesTableAnnotationComposer
   GeneratedColumn<int> get unitCost =>
       $composableBuilder(column: $table.unitCost, builder: (column) => column);
 
+  GeneratedColumn<int> get originalUnitCost => $composableBuilder(
+    column: $table.originalUnitCost,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get costCorrectedAt => $composableBuilder(
+    column: $table.costCorrectedAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get lineTotal =>
       $composableBuilder(column: $table.lineTotal, builder: (column) => column);
 
@@ -16533,6 +16685,8 @@ class $$BillLinesTableTableManager
                 Value<int> qty = const Value.absent(),
                 Value<int> unitPrice = const Value.absent(),
                 Value<int> unitCost = const Value.absent(),
+                Value<int?> originalUnitCost = const Value.absent(),
+                Value<int?> costCorrectedAt = const Value.absent(),
                 Value<int> lineTotal = const Value.absent(),
                 Value<int> taxRateBp = const Value.absent(),
                 Value<int> position = const Value.absent(),
@@ -16552,6 +16706,8 @@ class $$BillLinesTableTableManager
                 qty: qty,
                 unitPrice: unitPrice,
                 unitCost: unitCost,
+                originalUnitCost: originalUnitCost,
+                costCorrectedAt: costCorrectedAt,
                 lineTotal: lineTotal,
                 taxRateBp: taxRateBp,
                 position: position,
@@ -16573,6 +16729,8 @@ class $$BillLinesTableTableManager
                 required int qty,
                 required int unitPrice,
                 Value<int> unitCost = const Value.absent(),
+                Value<int?> originalUnitCost = const Value.absent(),
+                Value<int?> costCorrectedAt = const Value.absent(),
                 required int lineTotal,
                 Value<int> taxRateBp = const Value.absent(),
                 Value<int> position = const Value.absent(),
@@ -16592,6 +16750,8 @@ class $$BillLinesTableTableManager
                 qty: qty,
                 unitPrice: unitPrice,
                 unitCost: unitCost,
+                originalUnitCost: originalUnitCost,
+                costCorrectedAt: costCorrectedAt,
                 lineTotal: lineTotal,
                 taxRateBp: taxRateBp,
                 position: position,

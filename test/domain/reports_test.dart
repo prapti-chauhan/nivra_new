@@ -10,6 +10,7 @@ ProfitLine line({
   String name = 'bolt',
 }) =>
     ProfitLine(
+      id: 'line-$name',
       name: name,
       unit: 'pcs',
       qtyThousandths: qty,
