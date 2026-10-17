@@ -102,7 +102,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   padding: const EdgeInsets.only(bottom: 96),
                   itemCount: rows.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) => _CustomerRow(customer: rows[i]),
+                  itemBuilder: (context, i) => CustomerRow(customer: rows[i]),
                 );
               },
             ),
@@ -110,6 +110,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null,
         onPressed: () => _addCustomer(context),
         icon: const Icon(Icons.person_add_alt),
         label: const Text('Add customer'),
@@ -180,8 +181,8 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   }
 }
 
-class _CustomerRow extends StatelessWidget {
-  const _CustomerRow({required this.customer});
+class CustomerRow extends StatelessWidget {
+  const CustomerRow({super.key, required this.customer});
 
   final Customer customer;
 

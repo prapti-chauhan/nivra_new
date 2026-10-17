@@ -276,11 +276,13 @@ void main() {
     expect(newest.method, 'cash');
   });
 
-  testWidgets('the Bills screen records an expense without leaving it',
+  testWidgets('the home screen records an expense without leaving it',
       (tester) async {
     await openApp(tester, '/bills');
 
-    await tester.tap(find.byTooltip('Add expense'));
+    await tester.tap(find.text('Add Txn'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Expense'));
     await tester.pumpAndSettle();
     expect(find.text('New expense'), findsOneWidget);
 
@@ -292,7 +294,7 @@ void main() {
 
     // Back where he started, with the expense saved.
     expect(find.text('New expense'), findsNothing);
-    expect(find.byTooltip('Add expense'), findsOneWidget);
+    expect(find.text('Add Txn'), findsOneWidget);
     final saved = await db.select(db.moneyEntries).getSingle();
     expect(saved.amount, 25000);
     expect(saved.category, 'Tea & snacks');
