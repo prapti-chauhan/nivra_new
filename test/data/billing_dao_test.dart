@@ -446,6 +446,79 @@ void main() {
     });
   });
 
+  group('a bill edited more than once keeps true books', () {
+    late String customerId;
+    late String billId;
+
+    BillLineDraft bolts(int qty) => BillLineDraft(
+          itemId: boltId,
+          name: 'Hex bolt 16mm',
+          unit: 'pcs',
+          qty: qty,
+          unitPrice: 1000,
+        );
+
+    Future<void> edit(int qty) {
+      clock.advance(1000);
+      return billing.reviseBill(
+        userId: userId,
+        billId: billId,
+        customerId: customerId,
+        customerName: 'Ramesh',
+        lines: [bolts(qty)],
+      );
+    }
+
+    setUp(() async {
+      customerId =
+          await parties.createCustomer(userId: userId, name: 'Ramesh');
+      // 1 piece at 10.00 on credit.
+      billId = await billing.saveBill(
+        userId: userId,
+        customerId: customerId,
+        customerName: 'Ramesh',
+        paid: false,
+        lines: [bolts(1000)],
+      );
+    });
+
+    test('a second edit leaves what he owes equal to the new total', () async {
+      await edit(1200); // 12.00
+      expect(await parties.balanceFromLedger(customerId), 1200);
+
+      await edit(1500); // 15.00
+      expect(await parties.balanceFromLedger(customerId), 1500);
+      expect((await parties.findCustomer(customerId))!.balance, 1500);
+    });
+
+    test('a third edit is still right', () async {
+      await edit(1200);
+      await edit(1500);
+      await edit(900);
+      expect(await parties.balanceFromLedger(customerId), 900);
+    });
+
+    test('deleting an edited bill clears the debt completely', () async {
+      await edit(1200);
+      await edit(1500);
+
+      await billing.deleteBill(userId: userId, billId: billId);
+
+      expect(await parties.balanceFromLedger(customerId), 0);
+      expect((await parties.findCustomer(customerId))!.balance, 0);
+    });
+
+    test('restoring an edited, deleted bill brings back its total', () async {
+      await edit(1200);
+      await edit(1500);
+      await billing.deleteBill(userId: userId, billId: billId);
+
+      await billing.restoreBill(userId: userId, billId: billId);
+
+      expect(await parties.balanceFromLedger(customerId), 1500);
+    });
+  });
+
   group('caches never silently drift', () {
     test('a full rebuild finds nothing wrong after real activity', () async {
       final customerId =

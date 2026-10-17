@@ -1690,19 +1690,28 @@ class BillingDao extends DatabaseAccessor<AppDatabase> with _$BillingDaoMixin {
       );
     }
 
-    final entries = await (select(ledgerEntries)
-          ..where((t) =>
-              t.sourceType.equals('bill') &
-              t.sourceId.equals(bill.id) &
-              t.reason.equals(LedgerReason.sale.wire)))
-        .get();
+    // Cancel what the books say about this bill right now, account by account.
+    // It works from the net of every entry written for the bill rather than
+    // from the sale rows alone: a bill that has been revised already carries
+    // sale rows that were cancelled earlier, and cancelling those again would
+    // understate what the customer owes.
+    final rows = await customSelect(
+      'SELECT account_type, account_id, SUM(amount) AS net '
+      'FROM ledger_entries '
+      "WHERE source_type = 'bill' AND source_id = ? "
+      'GROUP BY account_type, account_id',
+      variables: [Variable<String>(bill.id)],
+      readsFrom: {ledgerEntries},
+    ).get();
 
-    for (final entry in entries) {
+    for (final row in rows) {
+      final net = row.read<int>('net');
+      if (net == 0) continue;
       await _parties.addLedgerEntry(
         userId: userId,
-        account: LedgerAccount.fromWire(entry.accountType),
-        accountId: entry.accountId,
-        amount: -entry.amount,
+        account: LedgerAccount.fromWire(row.read<String>('account_type')),
+        accountId: row.readNullable<String>('account_id'),
+        amount: -net,
         reason: LedgerReason.saleReversal,
         sourceType: 'bill',
         sourceId: bill.id,
